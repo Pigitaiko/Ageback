@@ -144,6 +144,33 @@ function initPublicContracts() {
   publicContracts.poolManager = new ethers.Contract(
     addresses.RebatePoolManager, ABIS.RebatePoolManager, publicProvider
   );
+  if (addresses.MockERC8004) {
+    publicContracts.identity = new ethers.Contract(
+      addresses.MockERC8004, ABIS.MockERC8004, publicProvider
+    );
+  }
+}
+
+// Build address→tokenId+reputation map from ERC-8004
+async function loadReputationMap() {
+  const id = publicContracts.identity || contracts.identity;
+  if (!id) return {};
+  try {
+    const nextId = Number(await id.nextTokenId());
+    const map = {}; // address → { tokenId, reputation }
+    for (let i = 1; i < nextId; i++) {
+      const owner = await id.ownerOf(i);
+      const rep = await id.getReputation(i);
+      const addr = owner.toLowerCase();
+      // Keep highest reputation if multiple tokens
+      if (!map[addr] || Number(rep) > map[addr].reputation) {
+        map[addr] = { tokenId: i, reputation: Number(rep) };
+      }
+    }
+    return map;
+  } catch {
+    return {};
+  }
 }
 
 // --- Default addresses (update after deployment or load from deployment.json) ---
@@ -262,6 +289,15 @@ async function loadMarketplace() {
     }));
 
     marketplaceData = results.filter(Boolean);
+
+    // Fetch ERC-8004 reputation for each provider
+    const repMap = await loadReputationMap();
+    for (const p of marketplaceData) {
+      const rep = repMap[p.address.toLowerCase()];
+      p.tokenId = rep?.tokenId || null;
+      p.reputation = rep?.reputation ?? null;
+    }
+
     sortMarketplace();
     showStatus(`Found ${marketplaceData.length} active provider(s)`, "success");
   } catch (err) {
@@ -762,6 +798,10 @@ function renderProviderCard(p) {
     ? `<span style="font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:20px;background:rgba(34,197,94,0.2);color:var(--success);font-weight:600;">LIVE</span>`
     : "";
 
+  const repDisplay = p.reputation !== null
+    ? `<span class="tier-badge ${p.reputation >= 500 ? 'platinum' : p.reputation >= 200 ? 'gold' : p.reputation >= 100 ? 'silver' : 'bronze'}" title="ERC-8004 #${p.tokenId}">Rep: ${p.reputation}</span>`
+    : `<span style="font-size:0.7rem;color:var(--text-muted);">No 8004 ID</span>`;
+
   const apiDisplay = p.apiEndpoint
     ? `<div class="provider-card-api"><a href="${escapeHtml(p.apiEndpoint)}" target="_blank" rel="noopener">${escapeHtml(p.apiEndpoint)}</a></div>`
     : "";
@@ -785,7 +825,10 @@ function renderProviderCard(p) {
     <div class="provider-card${isLiveServer ? " live" : ""}" data-address="${p.address}" ${isLiveServer ? 'style="border-color:var(--success)"' : ""}>
       <div class="provider-card-header">
         <h3>${escapeHtml(p.name)} ${liveTag}</h3>
-        <span class="provider-category">${escapeHtml(p.category)}</span>
+        <div style="display:flex;gap:0.4rem;align-items:center;">
+          ${repDisplay}
+          <span class="provider-category">${escapeHtml(p.category)}</span>
+        </div>
       </div>
       <div class="provider-card-desc">${escapeHtml(p.description) || "No description"}</div>
       ${apiDisplay}
