@@ -126,8 +126,25 @@ function populateCategorySelect(selectId, includeAll) {
 let provider, signer, userAddress;
 let contracts = {};
 let addresses = {};
-let serverUrl = "http://localhost:4020";
+let serverUrl = "https://ageback.onrender.com";
 let serverInfo = null;
+
+// Public read-only provider for marketplace (no wallet needed)
+const PUBLIC_RPC = "https://rpc.hoodi.taiko.xyz";
+let publicProvider = null;
+let publicContracts = {};
+
+function initPublicContracts() {
+  if (!addresses.RebatePoolManager || publicContracts.poolManager) return;
+  publicProvider = new ethers.JsonRpcProvider(PUBLIC_RPC, {
+    name: "taiko-hoodi",
+    chainId: 167013,
+    ensAddress: null,
+  });
+  publicContracts.poolManager = new ethers.Contract(
+    addresses.RebatePoolManager, ABIS.RebatePoolManager, publicProvider
+  );
+}
 
 // --- Default addresses (update after deployment or load from deployment.json) ---
 async function loadDeployment() {
@@ -202,11 +219,12 @@ function initContracts() {
 let marketplaceData = []; // cached provider list
 
 async function loadMarketplace() {
-  if (!contracts.poolManager) return showStatus("Connect wallet first", "error");
+  const pm = contracts.poolManager || publicContracts.poolManager;
+  if (!pm) return showStatus("Loading deployment data...", "info");
   try {
     showStatus("Loading providers from chain...", "info");
-    const filter = contracts.poolManager.filters.ProviderRegistered();
-    const events = await contracts.poolManager.queryFilter(filter, 0, "latest");
+    const filter = pm.filters.ProviderRegistered();
+    const events = await pm.queryFilter(filter, 0, "latest");
 
     const seen = new Set();
     const providers = [];
@@ -221,10 +239,10 @@ async function loadMarketplace() {
     const results = await Promise.all(providers.map(async (addr) => {
       try {
         const [p, meta, volume, balance] = await Promise.all([
-          contracts.poolManager.providers(addr),
-          contracts.poolManager.providerMetadata(addr),
-          contracts.poolManager.totalVolumeProcessed(addr),
-          contracts.poolManager.getProviderBalance(addr),
+          pm.providers(addr),
+          pm.providerMetadata(addr),
+          pm.totalVolumeProcessed(addr),
+          pm.getProviderBalance(addr),
         ]);
         if (!p.isActive) return null;
         return {
@@ -873,6 +891,11 @@ window.addEventListener("load", async () => {
   populateCategorySelect("reg-category", false);
   populateCategorySelect("mp-category-filter", true);
   await loadDeployment();
+  initPublicContracts();
+  // Load marketplace immediately (no wallet needed)
+  loadMarketplace();
+  // Auto-connect server
+  connectServer();
   if (window.ethereum) {
     const accts = await window.ethereum.request({ method: "eth_accounts" });
     if (accts.length > 0) {
