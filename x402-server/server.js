@@ -1,4 +1,10 @@
 import "dotenv/config";
+
+// Prevent unhandled rejections from crashing the server
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection]", err.message || err);
+});
+
 import express from "express";
 import {
   paymentMiddleware,
