@@ -28,17 +28,26 @@ let tierManager;
 let referralGraph;
 
 export function initCashback(config) {
-  provider = new ethers.JsonRpcProvider(config.taikoRpc);
+  if (!config.providerPrivateKey) {
+    console.error("[cashback] PROVIDER_PRIVATE_KEY not set — cashback disabled");
+    return;
+  }
+  provider = new ethers.JsonRpcProvider(config.taikoRpc, {
+    name: "taiko-hoodi",
+    chainId: 167013,
+    ensAddress: null, // Taiko Hoodi doesn't support ENS
+  });
   signer = new ethers.Wallet(config.providerPrivateKey, provider);
+
   poolManager = new ethers.Contract(
-    config.rebatePoolManager,
+    ethers.getAddress(config.rebatePoolManager),
     REBATE_POOL_ABI,
     signer
   );
 
   if (config.loyaltyTierManager) {
     tierManager = new ethers.Contract(
-      config.loyaltyTierManager,
+      ethers.getAddress(config.loyaltyTierManager),
       LOYALTY_TIER_ABI,
       signer
     );
@@ -47,7 +56,7 @@ export function initCashback(config) {
 
   if (config.referralGraph) {
     referralGraph = new ethers.Contract(
-      config.referralGraph,
+      ethers.getAddress(config.referralGraph),
       REFERRAL_GRAPH_ABI,
       signer
     );
@@ -126,6 +135,7 @@ export async function allocateCashback(agentAddress, paymentAmountUsd, agentId) 
  * Check provider's pool status.
  */
 export async function getPoolStatus() {
+  if (!signer) return { error: "Cashback not initialized" };
   const providerAddr = signer.address;
   const info = await poolManager.providers(providerAddr);
   const balance = await poolManager.getProviderBalance(providerAddr);
