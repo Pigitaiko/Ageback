@@ -131,6 +131,24 @@ function extractPayerAddress(paymentHeader) {
 
 // --- Routes ---
 
+// Landing page
+app.get("/", (req, res) => {
+  res.json({
+    name: "Ageback — x402 Cashback Protocol",
+    description: "Payment-gated Claude API with automatic cashback on Taiko Hoodi",
+    network: TAIKO_HOODI_NETWORK,
+    endpoints: {
+      "POST /v1/messages": "Claude API (x402 payment required)",
+      "GET /health": "Server status + pool info",
+      "GET /info": "Full server info",
+      "GET /cashback/status": "Cashback pool balance",
+      "GET /loyalty/tier/:id": "Agent loyalty tier",
+      "GET /referral/:agent": "Agent referral info",
+    },
+    github: "https://github.com/Pigitaiko/Ageback",
+  });
+});
+
 // Health check + pool status (free, no payment required)
 app.get("/health", async (req, res) => {
   try {
