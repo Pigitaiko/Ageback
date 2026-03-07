@@ -1,0 +1,22 @@
+{
+  "name": "x402-cashback-server",
+  "version": "1.0.0",
+  "description": "x402 payment-gated API server with cashback integration (Taiko)",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@x402/core": "^2.6.0",
+    "@x402/evm": "^2.6.0",
+    "@x402/express": "^2.6.0",
+    "dotenv": "^16.4.0",
+    "ethers": "^6.13.0",
+    "express": "^4.21.0",
+    "viem": "^2.47.0"
+  }
+}

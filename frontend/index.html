@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X402 Cashback Protocol</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>X402 Cashback Protocol</h1>
+      <div id="wallet-section">
+        <button id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
+        <div id="wallet-info" class="hidden">
+          <span id="wallet-address"></span>
+          <span id="wallet-balance"></span>
+          <span id="network-name"></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav>
+    <button class="nav-btn active" onclick="showTab('marketplace')">Marketplace</button>
+    <button class="nav-btn" onclick="showTab('providers')">My Provider</button>
+    <button class="nav-btn" onclick="showTab('tiers')">Loyalty Tiers</button>
+    <button class="nav-btn" onclick="showTab('referrals')">Referrals</button>
+    <button class="nav-btn" onclick="showTab('claims')">Claims</button>
+    <button class="nav-btn" onclick="showTab('admin')">Admin</button>
+  </nav>
+
+  <main>
+    <div id="status-bar" class="hidden"></div>
+
+    <!-- MARKETPLACE TAB -->
+    <section id="tab-marketplace" class="tab-content active">
+      <!-- Live Server Connection -->
+      <div class="card">
+        <h2>x402 Server</h2>
+        <div class="server-url-input">
+          <input type="text" id="server-url" value="http://localhost:4020" placeholder="http://localhost:4020">
+          <button class="btn-primary" onclick="connectServer()">Connect</button>
+        </div>
+        <div id="server-banner" class="server-banner" style="margin-top:0.8rem;display:none">
+          <div class="server-status">
+            <span class="status-dot" id="server-dot"></span>
+            <span id="server-status-text">Disconnected</span>
+          </div>
+          <div class="server-details" id="server-details"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="marketplace-header">
+          <h2>Service Provider Marketplace</h2>
+          <div class="marketplace-controls">
+            <div class="search-box">
+              <input type="text" id="mp-search" placeholder="Search providers..." oninput="filterMarketplace()">
+            </div>
+            <select id="mp-category-filter" onchange="filterMarketplace()"></select>
+            <select id="mp-sort" onchange="sortMarketplace()">
+              <option value="rebate-desc">Highest Rebate</option>
+              <option value="rebate-asc">Lowest Rebate</option>
+              <option value="deposit-desc">Largest Pool</option>
+              <option value="volume-desc">Most Volume</option>
+              <option value="newest">Newest</option>
+            </select>
+            <button class="btn-secondary" onclick="loadMarketplace()">Refresh</button>
+          </div>
+        </div>
+        <div id="marketplace-stats" class="marketplace-summary"></div>
+        <div id="marketplace-grid" class="provider-grid">
+          <p class="placeholder">Connect wallet to browse providers</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROVIDERS TAB -->
+    <section id="tab-providers" class="tab-content">
+      <div class="card">
+        <h2>Register as Provider</h2>
+        <form onsubmit="registerProvider(event)">
+          <div class="form-group">
+            <label>Service Name</label>
+            <input type="text" id="reg-name" required placeholder="My AI Service">
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="reg-description" placeholder="AI-powered API service">
+          </div>
+          <div class="form-group">
+            <label>API Endpoint</label>
+            <input type="url" id="reg-api" placeholder="https://api.example.com">
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="reg-category"></select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Rebate % (basis points, 300 = 3%)</label>
+              <input type="number" id="reg-rebate" min="1" max="1000" value="300" required>
+            </div>
+            <div class="form-group">
+              <label>Initial Deposit (ETH, min 0.1)</label>
+              <input type="number" id="reg-deposit" min="0.1" step="0.01" value="0.1" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">Register Provider</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>My Provider Status</h2>
+        <button class="btn-secondary" onclick="loadProviderInfo()">Refresh</button>
+        <div id="provider-info" class="info-grid">
+          <p class="placeholder">Connect wallet and click Refresh</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Fund Pool</h2>
+        <form onsubmit="fundPool(event)">
+          <div class="form-group">
+            <label>Amount (ETH)</label>
+            <input type="number" id="fund-amount" min="0.001" step="0.001" required>
+          </div>
+          <button type="submit" class="btn-primary">Fund Pool</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Withdraw Deposit</h2>
+        <div id="withdrawal-info"></div>
+        <button class="btn-secondary" onclick="loadWithdrawalInfo()">Check Withdrawal Status</button>
+        <form onsubmit="withdrawDeposit(event)">
+          <div class="form-group">
+            <label>Amount (ETH)</label>
+            <input type="number" id="withdraw-amount" min="0.001" step="0.001" required>
+          </div>
+          <button type="submit" class="btn-warning">Withdraw</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Allocate Rebate</h2>
+        <form onsubmit="allocateRebate(event)">
+          <div class="form-group">
+            <label>Agent Address</label>
+            <input type="text" id="alloc-agent" required placeholder="0x...">
+          </div>
+          <div class="form-group">
+            <label>Transaction Amount (ETH)</label>
+            <input type="number" id="alloc-amount" min="0.001" step="0.001" required>
+          </div>
+          <button type="submit" class="btn-primary">Allocate Rebate</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- TIERS TAB -->
+    <section id="tab-tiers" class="tab-content">
+      <div class="card">
+        <h2>Tier Structure</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Min Transactions</th>
+              <th>Multiplier</th>
+              <th>Min Account Age</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>0 (Bronze)</td><td>0</td><td>1.0x</td><td>None</td></tr>
+            <tr><td>1 (Silver)</td><td>10</td><td>1.1x</td><td>None</td></tr>
+            <tr><td>2 (Gold)</td><td>100</td><td>1.3x</td><td>None</td></tr>
+            <tr><td>3 (Platinum)</td><td>1,000</td><td>1.5x</td><td>30 days</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Agent Stats</h2>
+        <form onsubmit="loadAgentStats(event)">
+          <div class="form-group">
+            <label>Agent Token ID (ERC-8004)</label>
+            <input type="number" id="agent-token-id" min="1" required>
+          </div>
+          <button type="submit" class="btn-primary">Look Up</button>
+        </form>
+        <div id="agent-stats" class="info-grid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Calculate Boosted Rebate</h2>
+        <form onsubmit="calcBoostedRebate(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Agent Token ID</label>
+              <input type="number" id="boost-token-id" min="1" required>
+            </div>
+            <div class="form-group">
+              <label>Base Rebate (ETH)</label>
+              <input type="number" id="boost-base" min="0.0001" step="0.0001" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">Calculate</button>
+        </form>
+        <div id="boosted-result"></div>
+      </div>
+
+      <div class="card">
+        <h2>Mint Test Identity (MockERC8004)</h2>
+        <form onsubmit="mintIdentity(event)">
+          <div class="form-group">
+            <label>Recipient Address</label>
+            <input type="text" id="mint-address" placeholder="0x... (leave empty for self)">
+          </div>
+          <button type="submit" class="btn-primary">Mint Identity Token</button>
+        </form>
+        <div id="mint-result"></div>
+      </div>
+    </section>
+
+    <!-- REFERRALS TAB -->
+    <section id="tab-referrals" class="tab-content">
+      <div class="card">
+        <h2>Record Referral</h2>
+        <form onsubmit="recordReferral(event)">
+          <div class="form-group">
+            <label>Referrer Address</label>
+            <input type="text" id="ref-referrer" required placeholder="0x...">
+          </div>
+          <button type="submit" class="btn-primary">Record Referral</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>My Referral Info</h2>
+        <button class="btn-secondary" onclick="loadReferralInfo()">Refresh</button>
+        <div id="referral-info" class="info-grid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Referrer Stats</h2>
+        <form onsubmit="loadReferrerStats(event)">
+          <div class="form-group">
+            <label>Referrer Address</label>
+            <input type="text" id="referrer-address" placeholder="0x... (leave empty for self)">
+          </div>
+          <button type="submit" class="btn-primary">Look Up</button>
+        </form>
+        <div id="referrer-stats" class="info-grid"></div>
+      </div>
+    </section>
+
+    <!-- CLAIMS TAB -->
+    <section id="tab-claims" class="tab-content">
+      <div class="card">
+        <h2>Current Epoch</h2>
+        <button class="btn-secondary" onclick="loadEpochInfo()">Refresh</button>
+        <div id="epoch-info" class="info-grid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Claim Rebate</h2>
+        <form onsubmit="claimRebate(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Epoch</label>
+              <input type="number" id="claim-epoch" min="1" required>
+            </div>
+            <div class="form-group">
+              <label>Amount (ETH)</label>
+              <input type="number" id="claim-amount" step="0.0001" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Merkle Proof (comma-separated bytes32)</label>
+            <textarea id="claim-proof" rows="3" placeholder="0xabc...,0xdef..."></textarea>
+          </div>
+          <button type="submit" class="btn-primary">Claim</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Verify Proof</h2>
+        <form onsubmit="verifyProof(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Epoch</label>
+              <input type="number" id="verify-epoch" min="1" required>
+            </div>
+            <div class="form-group">
+              <label>Agent Address</label>
+              <input type="text" id="verify-agent" placeholder="0x...">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Amount (ETH)</label>
+            <input type="number" id="verify-amount" step="0.0001" required>
+          </div>
+          <div class="form-group">
+            <label>Merkle Proof (comma-separated bytes32)</label>
+            <textarea id="verify-proof" rows="3" placeholder="0xabc...,0xdef..."></textarea>
+          </div>
+          <button type="submit" class="btn-primary">Verify</button>
+        </form>
+        <div id="verify-result"></div>
+      </div>
+
+      <div class="card">
+        <h2>Check Claim Status</h2>
+        <form onsubmit="checkClaimStatus(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Epoch</label>
+              <input type="number" id="check-epoch" min="1" required>
+            </div>
+            <div class="form-group">
+              <label>Agent Address</label>
+              <input type="text" id="check-agent" placeholder="0x... (leave empty for self)">
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">Check</button>
+        </form>
+        <div id="claim-status"></div>
+      </div>
+    </section>
+
+    <!-- ADMIN TAB -->
+    <section id="tab-admin" class="tab-content">
+      <div class="card">
+        <h2>Contract Addresses</h2>
+        <div id="contract-addresses" class="info-grid">
+          <p class="placeholder">Load deployment to see addresses</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Emergency Controls (Owner Only)</h2>
+        <div class="btn-row">
+          <button class="btn-warning" onclick="pauseContract('poolManager')">Pause PoolManager</button>
+          <button class="btn-success" onclick="unpauseContract('poolManager')">Unpause PoolManager</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn-warning" onclick="pauseContract('tierManager')">Pause TierManager</button>
+          <button class="btn-success" onclick="unpauseContract('tierManager')">Unpause TierManager</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn-warning" onclick="pauseContract('referralGraph')">Pause ReferralGraph</button>
+          <button class="btn-success" onclick="unpauseContract('referralGraph')">Unpause ReferralGraph</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn-warning" onclick="pauseContract('accumulator')">Pause Accumulator</button>
+          <button class="btn-success" onclick="unpauseContract('accumulator')">Unpause Accumulator</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Advance Epoch (Owner)</h2>
+        <button class="btn-primary" onclick="advanceEpoch()">Advance Epoch</button>
+      </div>
+
+      <div class="card">
+        <h2>Update Merkle Root (Operator)</h2>
+        <form onsubmit="updateMerkleRoot(event)">
+          <div class="form-group">
+            <label>New Merkle Root (bytes32)</label>
+            <input type="text" id="new-merkle-root" required placeholder="0x...">
+          </div>
+          <button type="submit" class="btn-primary">Update Root</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

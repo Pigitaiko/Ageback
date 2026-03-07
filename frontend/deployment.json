@@ -1,0 +1,13 @@
+{
+  "network": "taikoHoodi",
+  "deployer": "0x3D545ced5731379E2b6c9D66301eDDEb8372a823",
+  "timestamp": "2026-03-06T08:36:06.497Z",
+  "contracts": {
+    "MockERC8004": "0x8cc9aD184F2440FACFbffCBFdC4c69B5bCF577af",
+    "RebatePoolManager": "0x1571922009FC4a9ed68646b9722A9df6FB1fD11d",
+    "LoyaltyTierManager": "0x126B3Ec653BD2ca9fe537b5A701bD94eDDFF1F6c",
+    "ReferralGraph": "0xa9BCFa08f1A2A82339ecA528b58366923dC0B250",
+    "RebateAccumulator": "0xc1c3Edd5C5fCb85a05A949E42E9A350837D1B781",
+    "MockUSDC": "0xB0b25E80D3a97526b50a73Cb7cEdBCFd4016882F"
+  }
+}
