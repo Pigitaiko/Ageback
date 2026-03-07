@@ -136,18 +136,24 @@ let publicContracts = {};
 
 function initPublicContracts() {
   if (!addresses.RebatePoolManager || publicContracts.poolManager) return;
-  publicProvider = new ethers.JsonRpcProvider(PUBLIC_RPC, {
-    name: "taiko-hoodi",
-    chainId: 167013,
-    ensAddress: null,
-  });
-  publicContracts.poolManager = new ethers.Contract(
-    addresses.RebatePoolManager, ABIS.RebatePoolManager, publicProvider
-  );
-  if (addresses.MockERC8004) {
-    publicContracts.identity = new ethers.Contract(
-      addresses.MockERC8004, ABIS.MockERC8004, publicProvider
+  try {
+    publicProvider = new ethers.JsonRpcProvider(PUBLIC_RPC, {
+      name: "taiko-hoodi",
+      chainId: 167013,
+      ensAddress: null,
+    });
+    publicContracts.poolManager = new ethers.Contract(
+      addresses.RebatePoolManager, ABIS.RebatePoolManager, publicProvider
     );
+    if (addresses.MockERC8004) {
+      publicContracts.identity = new ethers.Contract(
+        addresses.MockERC8004, ABIS.MockERC8004, publicProvider
+      );
+    }
+    console.log("[init] Public contracts ready, RPC:", PUBLIC_RPC);
+  } catch (err) {
+    console.error("[init] Failed to init public contracts:", err);
+    showStatus("Failed to connect to Taiko RPC: " + err.message, "error");
   }
 }
 
@@ -251,7 +257,18 @@ async function loadMarketplace() {
   try {
     showStatus("Loading providers from chain...", "info");
     const filter = pm.filters.ProviderRegistered();
-    const events = await pm.queryFilter(filter, 0, "latest");
+
+    // Use a bounded block range and timeout to avoid RPC hangs
+    const rpcProvider = publicProvider || provider;
+    const currentBlock = await Promise.race([
+      rpcProvider.getBlockNumber(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("RPC timeout (block number)")), 15000))
+    ]);
+    const fromBlock = Math.max(0, currentBlock - 500000);
+    const events = await Promise.race([
+      pm.queryFilter(filter, fromBlock, "latest"),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("RPC timeout (event query)")), 20000))
+    ]);
 
     const seen = new Set();
     const providers = [];
@@ -301,6 +318,36 @@ async function loadMarketplace() {
     sortMarketplace();
     showStatus(`Found ${marketplaceData.length} active provider(s)`, "success");
   } catch (err) {
+    console.error("[marketplace]", err);
+    showStatus("Loading from server fallback...", "info");
+    // Fallback: use server /info to show at least the connected provider
+    try {
+      const srvUrl = document.getElementById("server-url").value.replace(/\/+$/, "");
+      const resp = await fetch(srvUrl + "/info");
+      const info = await resp.json();
+      if (info.payTo && info.contracts?.RebatePoolManager) {
+        marketplaceData = [{
+          address: info.payTo,
+          name: "x402 Cashback Server",
+          description: "Payment-gated Claude API with automatic cashback",
+          apiEndpoint: srvUrl + "/v1/messages",
+          category: "AI Services",
+          rebateBps: info.cashbackPool?.rebatePercent ? parseInt(info.cashbackPool.rebatePercent) * 100 : 300,
+          depositedAmount: ethers.parseEther(info.cashbackPool?.deposited || "0"),
+          availableBalance: ethers.parseEther(info.cashbackPool?.available || "0"),
+          allocatedRewards: 0n,
+          totalVolume: 0n,
+          registrationTime: 0,
+          tokenId: null,
+          reputation: null,
+        }];
+        renderMarketplace(marketplaceData);
+        showStatus("Loaded from server (on-chain query failed: " + parseError(err) + ")", "info");
+        return;
+      }
+    } catch (fallbackErr) {
+      console.error("[marketplace fallback]", fallbackErr);
+    }
     showStatus("Failed to load marketplace: " + parseError(err), "error");
   }
 }
