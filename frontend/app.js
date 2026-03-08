@@ -62,14 +62,14 @@ const ABIS = {
 
 // --- Trending ERC-8004 Agents (from 8004scan.io leaderboard) ---
 const TRENDING_AGENTS = [
-  { rank: 1, name: "Gekko Strategist",  network: "Base",     x402: false, score: 100, category: "DeFi",          description: "Automated trading strategy agent" },
-  { rank: 2, name: "Captain Dack",      network: "Base",     x402: true,  score: 99,  category: "AI Services",   description: "x402-enabled AI assistant agent" },
-  { rank: 3, name: "Agent8",            network: "Base",     x402: false, score: 99,  category: "Multi-agent",   description: "Multi-agent orchestration framework" },
-  { rank: 4, name: "Clawnch",           network: "Base",     x402: true,  score: 99,  category: "Infrastructure", description: "x402 infrastructure & tooling agent" },
-  { rank: 5, name: "Gekko Executor",    network: "Base",     x402: false, score: 99,  category: "DeFi",          description: "On-chain trade execution agent" },
-  { rank: 6, name: "Gekko Allocator",   network: "Base",     x402: true,  score: 99,  category: "DeFi",          description: "x402 portfolio allocation agent" },
-  { rank: 7, name: "Gekko Rebalancer",  network: "Base",     x402: false, score: 99,  category: "DeFi",          description: "Automated portfolio rebalancing" },
-  { rank: 8, name: "Minara AI",         network: "Ethereum", x402: false, score: 92,  category: "AI Services",   description: "Ethereum-native AI research agent" },
+  { rank: 1, name: "Gekko Strategist",  network: "Base",     x402: false, score: 100, category: "DeFi",          description: "Automated trading strategy agent",    scanUrl: "https://www.8004scan.io/agents?q=Gekko+Strategist" },
+  { rank: 2, name: "Captain Dack",      network: "Base",     x402: true,  score: 99,  category: "AI Services",   description: "x402-enabled AI assistant agent",     scanUrl: "https://www.8004scan.io/agents?q=Captain+Dack" },
+  { rank: 3, name: "Agent8",            network: "Base",     x402: false, score: 99,  category: "Multi-agent",   description: "Multi-agent orchestration framework", scanUrl: "https://www.8004scan.io/agents?q=Agent8" },
+  { rank: 4, name: "Clawnch",           network: "Base",     x402: true,  score: 99,  category: "Infrastructure", description: "x402 infrastructure & tooling agent", scanUrl: "https://www.8004scan.io/agents?q=Clawnch" },
+  { rank: 5, name: "Gekko Executor",    network: "Base",     x402: false, score: 99,  category: "DeFi",          description: "On-chain trade execution agent",      scanUrl: "https://www.8004scan.io/agents?q=Gekko+Executor" },
+  { rank: 6, name: "Gekko Allocator",   network: "Base",     x402: true,  score: 99,  category: "DeFi",          description: "x402 portfolio allocation agent",     scanUrl: "https://www.8004scan.io/agents?q=Gekko+Allocator" },
+  { rank: 7, name: "Gekko Rebalancer",  network: "Base",     x402: false, score: 99,  category: "DeFi",          description: "Automated portfolio rebalancing",     scanUrl: "https://www.8004scan.io/agents?q=Gekko+Rebalancer" },
+  { rank: 8, name: "Minara AI",         network: "Ethereum", x402: false, score: 92,  category: "AI Services",   description: "Ethereum-native AI research agent",   scanUrl: "https://www.8004scan.io/agents?q=Minara+AI" },
 ];
 
 function renderTrendingAgents() {
@@ -83,7 +83,7 @@ function renderTrendingAgents() {
     const scorePct = a.score;
     const scoreColor = scorePct >= 100 ? "var(--success)" : scorePct >= 95 ? "#6366f1" : "var(--warning)";
     return `
-      <div class="trending-agent-card">
+      <a href="${a.scanUrl}" target="_blank" rel="noopener" class="trending-agent-card">
         <div class="trending-rank" style="color:${a.rank <= 3 ? 'var(--warning)' : 'var(--text-muted)'}">#${a.rank}</div>
         <div class="trending-info">
           <div class="trending-name">${escapeHtml(a.name)} ${x402Tag}</div>
@@ -97,7 +97,10 @@ function renderTrendingAgents() {
           <span class="score-value" style="color:${scoreColor}">${a.score}</span>
           <span class="score-max">/100</span>
         </div>
-      </div>
+        <div class="trending-cta">
+          <span class="cta-btn">Earn Cashback</span>
+        </div>
+      </a>
     `;
   }).join("");
 }

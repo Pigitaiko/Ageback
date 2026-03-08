@@ -543,6 +543,11 @@ select option { color: var(--text); font-weight: 400; }
   gap: 0.6rem;
 }
 
+a.trending-agent-card {
+  text-decoration: none;
+  color: inherit;
+}
+
 .trending-agent-card {
   display: flex;
   align-items: center;
@@ -551,10 +556,15 @@ select option { color: var(--text); font-weight: 400; }
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.8rem 1rem;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, transform 0.15s;
+  cursor: pointer;
+  position: relative;
 }
 
-.trending-agent-card:hover { border-color: var(--primary); }
+.trending-agent-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
 
 .trending-rank {
   font-size: 1.1rem;
@@ -627,6 +637,26 @@ select option { color: var(--text); font-weight: 400; }
 .score-max {
   font-size: 0.65rem;
   color: var(--text-muted);
+}
+
+.trending-cta {
+  min-width: fit-content;
+}
+
+.cta-btn {
+  font-size: 0.7rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+
+.trending-agent-card:hover .cta-btn {
+  background: var(--primary);
+  color: white;
 }
 
 @media (max-width: 768px) {
