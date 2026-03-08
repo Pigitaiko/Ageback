@@ -967,6 +967,208 @@ async function testServerHealth() {
   }
 }
 
+// --- Demo Tab Functions ---
+const MOCK_USDC_ADDRESS = "0xB0b25E80D3a97526b50a73Cb7cEdBCFd4016882F";
+const MOCK_USDC_ABI = [
+  "function mint(address to, uint256 amount) external",
+  "function balanceOf(address account) external view returns (uint256)",
+  "function decimals() external view returns (uint8)"
+];
+
+async function demoRefreshSetup() {
+  // Wallet info
+  const addrEl = document.getElementById("demo-wallet-addr");
+  const ethEl = document.getElementById("demo-eth-balance");
+  const usdcEl = document.getElementById("demo-usdc-balance");
+  const dotEl = document.getElementById("demo-server-dot");
+
+  if (userAddress && provider) {
+    addrEl.textContent = shortenAddr(userAddress);
+    try {
+      const bal = await provider.getBalance(userAddress);
+      ethEl.textContent = parseFloat(ethers.formatEther(bal)).toFixed(4) + " ETH";
+    } catch { ethEl.textContent = "Error"; }
+
+    try {
+      const rpcProv = publicProvider || provider;
+      const usdc = new ethers.Contract(MOCK_USDC_ADDRESS, MOCK_USDC_ABI, rpcProv);
+      const usdcBal = await usdc.balanceOf(userAddress);
+      usdcEl.textContent = parseFloat(ethers.formatUnits(usdcBal, 6)).toFixed(2) + " USDC";
+    } catch { usdcEl.textContent = "Error"; }
+  } else {
+    addrEl.textContent = "Not connected";
+    ethEl.textContent = "--";
+    usdcEl.textContent = "--";
+  }
+
+  // Server status
+  try {
+    const resp = await fetch((serverUrl || "https://ageback.onrender.com") + "/info");
+    if (resp.ok) {
+      dotEl.classList.add("online");
+    } else {
+      dotEl.classList.remove("online");
+    }
+  } catch {
+    dotEl.classList.remove("online");
+  }
+}
+
+async function demoMintUSDC() {
+  if (!signer) {
+    showStatus("Connect wallet first to mint USDC", "error");
+    return;
+  }
+  try {
+    showStatus("Minting 100 MockUSDC...", "info");
+    const usdc = new ethers.Contract(MOCK_USDC_ADDRESS, MOCK_USDC_ABI, signer);
+    const tx = await usdc.mint(userAddress, ethers.parseUnits("100", 6));
+    await tx.wait();
+    showStatus("Minted 100 MockUSDC! Tx: " + tx.hash.slice(0, 18) + "...", "success");
+    demoRefreshSetup();
+  } catch (err) {
+    showStatus("Mint failed: " + parseError(err), "error");
+  }
+}
+
+async function demoStep1() {
+  const resultEl = document.getElementById("demo-step1-result");
+  const url = (serverUrl || "https://ageback.onrender.com") + "/v1/messages";
+  const body = {
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 50,
+    messages: [{ role: "user", content: "Say hello in one sentence." }]
+  };
+
+  resultEl.innerHTML = '<div class="demo-progress"><div class="spinner"></div> Sending POST to /v1/messages without payment...</div>';
+  resultEl.classList.add("visible");
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    const status = resp.status;
+    let paymentHeader = resp.headers.get("x-payment") || resp.headers.get("X-Payment");
+
+    let decoded = null;
+    if (status === 402) {
+      // Try to get payment requirements from response body or header
+      try {
+        const respBody = await resp.json();
+        if (respBody.x402) decoded = respBody.x402;
+        else if (respBody.paymentRequirements) decoded = respBody.paymentRequirements;
+        else decoded = respBody;
+      } catch {
+        // Try parsing header
+        if (paymentHeader) {
+          try { decoded = JSON.parse(atob(paymentHeader)); } catch {}
+        }
+      }
+    }
+
+    let html = `<div style="margin-bottom:0.5rem"><span class="demo-check">&#10003;</span> Response received</div>`;
+    html += `<div class="info-row"><span class="label">HTTP Status</span><span class="value" style="color:var(--warning);font-weight:700">${status} Payment Required</span></div>`;
+
+    if (decoded) {
+      const req = Array.isArray(decoded) ? decoded[0] : decoded;
+      html += `<div style="margin-top:0.6rem;font-size:0.85rem;color:var(--text-muted)"><strong style="color:var(--text)">Payment Requirements:</strong></div>`;
+      html += `<div class="info-grid" style="margin-top:0.3rem">`;
+      if (req.maxAmountRequired) html += `<div class="info-row"><span class="label">Price</span><span class="value">${req.maxAmountRequired} (smallest unit)</span></div>`;
+      if (req.asset) html += `<div class="info-row"><span class="label">Asset</span><span class="value">${shortenAddr(req.asset)}</span></div>`;
+      if (req.network) html += `<div class="info-row"><span class="label">Network</span><span class="value">${req.network}</span></div>`;
+      if (req.payTo) html += `<div class="info-row"><span class="label">Pay To</span><span class="value">${shortenAddr(req.payTo)}</span></div>`;
+      html += `</div>`;
+      html += `<details style="margin-top:0.6rem"><summary style="cursor:pointer;font-size:0.8rem;color:var(--text-muted)">Raw payment requirements</summary><pre>${JSON.stringify(decoded, null, 2)}</pre></details>`;
+    } else {
+      html += `<p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem">Could not parse payment requirements. The server may be offline or not returning x402 headers. Status: ${status}</p>`;
+      try {
+        const text = await resp.text();
+        if (text) html += `<pre>${text.substring(0, 500)}</pre>`;
+      } catch {}
+    }
+
+    resultEl.innerHTML = html;
+  } catch (err) {
+    resultEl.innerHTML = `<div style="color:var(--danger)">Request failed: ${err.message}</div><p style="color:var(--text-muted);font-size:0.82rem;margin-top:0.5rem">The server at ${url} may be starting up (cold start on Render can take ~30s). Try again in a moment.</p>`;
+  }
+}
+
+async function demoStep3() {
+  const resultEl = document.getElementById("demo-step3-result");
+  const baseUrl = serverUrl || "https://ageback.onrender.com";
+
+  resultEl.innerHTML = '<div class="demo-progress"><div class="spinner"></div> Checking current cashback pool state...</div>';
+  resultEl.classList.add("visible");
+
+  let beforeInfo = null;
+  try {
+    const resp = await fetch(baseUrl + "/health");
+    if (resp.ok) beforeInfo = await resp.json();
+  } catch {}
+
+  let html = "";
+
+  // Before state
+  if (beforeInfo && beforeInfo.cashbackPool) {
+    html += `<div style="margin-bottom:0.8rem"><span class="demo-check">&#10003;</span> <strong>Pool State (Before)</strong></div>`;
+    html += `<div class="info-grid">`;
+    html += `<div class="info-row"><span class="label">Available Balance</span><span class="value">${beforeInfo.cashbackPool.available || "?"} ETH</span></div>`;
+    html += `<div class="info-row"><span class="label">Rebate Rate</span><span class="value">${beforeInfo.cashbackPool.rebatePercent || "?"}</span></div>`;
+    html += `</div>`;
+  }
+
+  // Simulated payment animation
+  html += `<div class="demo-progress" style="margin:1rem 0"><div class="spinner"></div> Simulating x402 payment flow...</div>`;
+  resultEl.innerHTML = html;
+
+  await new Promise(r => setTimeout(r, 1500));
+
+  // After state
+  html = "";
+  if (beforeInfo && beforeInfo.cashbackPool) {
+    html += `<div style="margin-bottom:0.8rem"><span class="demo-check">&#10003;</span> <strong>Pool State (Before)</strong></div>`;
+    html += `<div class="info-grid">`;
+    html += `<div class="info-row"><span class="label">Available Balance</span><span class="value">${beforeInfo.cashbackPool.available || "?"} ETH</span></div>`;
+    html += `<div class="info-row"><span class="label">Rebate Rate</span><span class="value">${beforeInfo.cashbackPool.rebatePercent || "?"}</span></div>`;
+    html += `</div>`;
+  }
+
+  html += `<div style="margin:1rem 0;padding:1rem;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:8px">`;
+  html += `<span class="demo-check">&#10003;</span> <strong style="color:var(--success)">Payment Simulation Complete</strong>`;
+  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-top:0.5rem;line-height:1.5">`;
+  html += `In production, the agent's <code style="background:var(--input-bg);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.78rem">@x402/evm</code> client automatically:</p>`;
+  html += `<ol style="color:var(--text-muted);font-size:0.82rem;margin:0.5rem 0 0 1.2rem;line-height:1.7">`;
+  html += `<li>Reads payment requirements from the 402 response</li>`;
+  html += `<li>Signs a USDC <code style="background:var(--input-bg);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.78rem">transferWithAuthorization</code> (EIP-3009, gasless)</li>`;
+  html += `<li>Retries the request with the signed payment in headers</li>`;
+  html += `<li>The Taiko facilitator settles the USDC on-chain</li>`;
+  html += `<li>The server calls <code style="background:var(--input-bg);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.78rem">RebatePoolManager.allocateRebate()</code></li>`;
+  html += `<li>Cashback is allocated from the provider's deposit pool to the agent</li>`;
+  html += `</ol></div>`;
+
+  // Fetch after state
+  let afterInfo = null;
+  try {
+    const resp2 = await fetch(baseUrl + "/health");
+    if (resp2.ok) afterInfo = await resp2.json();
+  } catch {}
+
+  if (afterInfo && afterInfo.cashbackPool) {
+    html += `<div style="margin-top:0.8rem"><span class="demo-check">&#10003;</span> <strong>Pool State (Current)</strong></div>`;
+    html += `<div class="info-grid">`;
+    html += `<div class="info-row"><span class="label">Available Balance</span><span class="value">${afterInfo.cashbackPool.available || "?"} ETH</span></div>`;
+    html += `<div class="info-row"><span class="label">Rebate Rate</span><span class="value">${afterInfo.cashbackPool.rebatePercent || "?"}</span></div>`;
+    html += `</div>`;
+  }
+
+  html += `<div style="margin-top:1rem"><a href="https://hoodi.taikoscan.io/address/0x1571922009FC4a9ed68646b9722A9df6FB1fD11d" target="_blank" rel="noopener" style="color:var(--primary);font-size:0.85rem">View RebatePoolManager on Taikoscan &rarr;</a></div>`;
+
+  resultEl.innerHTML = html;
+}
+
 // --- UI Helpers ---
 function showTab(name) {
   document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
@@ -984,6 +1186,9 @@ function showTab(name) {
   }
   if (name === "claims" && contracts.accumulator) {
     loadEpochInfo();
+  }
+  if (name === "demo") {
+    demoRefreshSetup();
   }
 }
 
@@ -1033,6 +1238,8 @@ window.addEventListener("load", async () => {
   renderTrendingAgents();
   // Auto-connect server
   connectServer();
+  // Initialize demo tab
+  demoRefreshSetup();
   if (window.ethereum) {
     const accts = await window.ethereum.request({ method: "eth_accounts" });
     if (accts.length > 0) {

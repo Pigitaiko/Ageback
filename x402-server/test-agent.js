@@ -1,147 +1,148 @@
 import "dotenv/config";
-import { createWalletClient, createPublicClient, http, defineChain, publicActions } from "viem";
+import { createWalletClient, http, defineChain, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
 
-// --- Taiko Hoodi chain definition ---
+// ─────────────────────────────────────────────
+//  Ageback Demo Agent — x402 + Cashback on Taiko
+// ─────────────────────────────────────────────
+
 const taikoHoodi = defineChain({
   id: 167013,
   name: "Taiko Hoodi",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: {
-    default: { http: ["https://rpc.hoodi.taiko.xyz"] },
-  },
-  blockExplorers: {
-    default: { name: "Taikoscan", url: "https://hoodi.taikoscan.io" },
-  },
+  rpcUrls: { default: { http: ["https://rpc.hoodi.taiko.xyz"] } },
+  blockExplorers: { default: { name: "Taikoscan", url: "https://hoodi.taikoscan.io" } },
 });
 
-// --- Agent wallet setup ---
-// Use a DIFFERENT key than the provider. For testing, we use the same one.
-// In production, the agent would have its own wallet with USDC.
-const AGENT_PRIVATE_KEY = process.env.PROVIDER_PRIVATE_KEY;
-if (!AGENT_PRIVATE_KEY) {
-  console.error("Set PROVIDER_PRIVATE_KEY in .env (or add AGENT_PRIVATE_KEY)");
+// Agent wallet — use AGENT_PRIVATE_KEY or fall back to PROVIDER_PRIVATE_KEY for testing
+const AGENT_KEY = process.env.AGENT_PRIVATE_KEY || process.env.PROVIDER_PRIVATE_KEY;
+if (!AGENT_KEY) {
+  console.error("Set AGENT_PRIVATE_KEY (or PROVIDER_PRIVATE_KEY) in .env");
   process.exit(1);
 }
 
-const account = privateKeyToAccount(AGENT_PRIVATE_KEY);
-console.log("Agent wallet:", account.address);
-
+const account = privateKeyToAccount(AGENT_KEY);
 const walletClient = createWalletClient({
-  account,
-  chain: taikoHoodi,
-  transport: http(),
+  account, chain: taikoHoodi, transport: http(),
 }).extend(publicActions);
 
-// --- Build x402 client ---
-// viem puts address at walletClient.account.address, but toClientEvmSigner expects .address
+// viem workaround: toClientEvmSigner expects .address at top level
 walletClient.address = walletClient.account.address;
+
 const signer = toClientEvmSigner(walletClient);
 const client = new x402Client();
-registerExactEvmScheme(client, {
-  signer,
-  networks: ["eip155:167013"],
-});
-
+registerExactEvmScheme(client, { signer, networks: ["eip155:167013"] });
 const httpClient = new x402HTTPClient(client);
 
-// --- Make a paid request ---
-const SERVER_URL = `http://localhost:${process.env.PORT || 4020}`;
+// Use live server by default, override with SERVER_URL env var
+const SERVER_URL = process.env.SERVER_URL || "https://ageback.onrender.com";
+
+// Custom prompt via CLI arg: node test-agent.js "What is x402?"
+const userPrompt = process.argv[2] || "Say hello in one sentence.";
 
 async function main() {
   const url = `${SERVER_URL}/v1/messages`;
   const body = {
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 50,
-    messages: [{ role: "user", content: "Say hello in one sentence." }],
+    max_tokens: 100,
+    messages: [{ role: "user", content: userPrompt }],
   };
 
-  console.log("\n=== Step 1: Initial request (expect 402) ===");
+  console.log(`\n┌─────────────────────────────────────────┐`);
+  console.log(`│  Ageback — x402 Cashback Demo Agent     │`);
+  console.log(`└─────────────────────────────────────────┘`);
+  console.log(`  Agent:   ${account.address}`);
+  console.log(`  Server:  ${SERVER_URL}`);
+  console.log(`  Prompt:  "${userPrompt}"`);
 
-  // First request - get 402 with payment requirements
+  // ── Step 1: Request without payment ──
+  console.log(`\n── Step 1: Send request (expect 402) ──────`);
+
   const initialResp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
-  console.log("Status:", initialResp.status);
+  console.log(`  Status: ${initialResp.status}`);
 
   if (initialResp.status !== 402) {
-    console.log("Expected 402, got", initialResp.status);
     const text = await initialResp.text();
-    console.log("Body:", text);
+    console.log(`  Unexpected response:`, text.substring(0, 300));
     return;
   }
 
-  // Extract payment requirements from PAYMENT-REQUIRED header
-  const paymentRequiredHeader = initialResp.headers.get("PAYMENT-REQUIRED");
-  if (!paymentRequiredHeader) {
-    console.error("No PAYMENT-REQUIRED header found");
-    return;
+  // Parse payment requirements from response body
+  let paymentRequired;
+  try {
+    const respBody = await initialResp.json();
+    paymentRequired = respBody;
+  } catch {
+    const header = initialResp.headers.get("PAYMENT-REQUIRED");
+    if (!header) { console.error("  No payment requirements found"); return; }
+    paymentRequired = JSON.parse(Buffer.from(header, "base64").toString());
   }
 
-  const paymentRequired = JSON.parse(
-    Buffer.from(paymentRequiredHeader, "base64").toString()
-  );
+  const accept = paymentRequired.accepts?.[0] || paymentRequired;
+  console.log(`  Payment required:`);
+  console.log(`    Amount:  ${accept.maxAmountRequired || accept.amount || "?"} (smallest unit)`);
+  console.log(`    Asset:   ${accept.asset || "?"}`);
+  console.log(`    Network: ${accept.network || "?"}`);
+  console.log(`    Pay to:  ${accept.payTo || "?"}`);
 
-  console.log("Payment required:");
-  console.log("  x402 version:", paymentRequired.x402Version);
-  console.log("  Options:", paymentRequired.accepts.length);
-  console.log(
-    "  Price:",
-    paymentRequired.accepts[0].amount,
-    "micro-USDC ($" +
-      (Number(paymentRequired.accepts[0].amount) / 1e6).toFixed(4) +
-      ")"
-  );
-  console.log("  Asset:", paymentRequired.accepts[0].asset);
-  console.log("  Pay to:", paymentRequired.accepts[0].payTo);
+  // ── Step 2: Sign x402 payment ──
+  console.log(`\n── Step 2: Sign USDC payment (EIP-3009) ───`);
 
-  console.log("\n=== Step 2: Create payment signature ===");
-
-  // Use x402 client to create signed payment payload
   const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
   const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
 
-  console.log("Payment signed!");
-  console.log("Header key:", Object.keys(paymentHeaders)[0]);
+  console.log(`  Payment signed (transferWithAuthorization)`);
+  console.log(`  Header: ${Object.keys(paymentHeaders)[0]}`);
 
-  console.log("\n=== Step 3: Retry with payment ===");
+  // ── Step 3: Retry with payment ──
+  console.log(`\n── Step 3: Retry with payment ──────────────`);
 
-  // Retry with payment header
   const paidResp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...paymentHeaders,
-    },
+    headers: { "Content-Type": "application/json", ...paymentHeaders },
     body: JSON.stringify(body),
   });
 
-  console.log("Status:", paidResp.status);
+  console.log(`  Status: ${paidResp.status}`);
 
-  // Check cashback headers
   const cashbackEnabled = paidResp.headers.get("X-Cashback-Enabled");
   const cashbackAgent = paidResp.headers.get("X-Cashback-Agent");
-  console.log("Cashback enabled:", cashbackEnabled);
-  console.log("Cashback agent:", cashbackAgent);
+  const cashbackContract = paidResp.headers.get("X-Cashback-Contract");
 
   const data = await paidResp.json();
+
   if (paidResp.ok) {
-    console.log("\n=== Claude Response ===");
-    console.log(data.content?.[0]?.text || JSON.stringify(data, null, 2));
-    console.log("\n=== Success! ===");
-    console.log("Agent paid USDC on Taiko Hoodi -> got Claude response -> cashback allocated!");
+    console.log(`\n── Claude Response ─────────────────────────`);
+    console.log(`  ${data.content?.[0]?.text || JSON.stringify(data)}`);
+
+    console.log(`\n── Cashback Info ───────────────────────────`);
+    console.log(`  Enabled:  ${cashbackEnabled || "false"}`);
+    console.log(`  Agent:    ${cashbackAgent || "N/A"}`);
+    console.log(`  Contract: ${cashbackContract || "N/A"}`);
+
+    console.log(`\n┌─────────────────────────────────────────┐`);
+    console.log(`│  Demo complete!                         │`);
+    console.log(`│                                         │`);
+    console.log(`│  Agent paid USDC -> Got Claude response  │`);
+    console.log(`│  -> Cashback allocated on-chain          │`);
+    console.log(`│                                         │`);
+    console.log(`│  Explorer: https://hoodi.taikoscan.io   │`);
+    console.log(`│  /address/${cashbackContract || "0x1571922009FC4a9ed68646b9722A9df6FB1fD11d"}`);
+    console.log(`└─────────────────────────────────────────┘\n`);
   } else {
-    console.log("\nError response:", JSON.stringify(data, null, 2));
+    console.log(`\n  Error:`, JSON.stringify(data, null, 2));
   }
 }
 
 main().catch((err) => {
-  console.error("Fatal:", err.message);
+  console.error("\nFatal:", err.message);
   process.exit(1);
 });

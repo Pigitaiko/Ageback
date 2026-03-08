@@ -22,7 +22,8 @@
   </header>
 
   <nav>
-    <button class="nav-btn active" onclick="showTab('marketplace')">Marketplace</button>
+    <button class="nav-btn active" onclick="showTab('demo')">Live Demo</button>
+    <button class="nav-btn" onclick="showTab('marketplace')">Marketplace</button>
     <button class="nav-btn" onclick="showTab('providers')">My Provider</button>
     <button class="nav-btn" onclick="showTab('tiers')">Loyalty Tiers</button>
     <button class="nav-btn" onclick="showTab('referrals')">Referrals</button>
@@ -34,7 +35,113 @@
     <div id="status-bar" class="hidden"></div>
 
     <!-- MARKETPLACE TAB -->
-    <section id="tab-marketplace" class="tab-content active">
+    <!-- DEMO TAB -->
+    <section id="tab-demo" class="tab-content active">
+      <!-- Section 1: Demo Setup -->
+      <div class="card">
+        <h2>Demo Setup</h2>
+        <div class="info-grid" id="demo-setup-info">
+          <div class="info-row">
+            <span class="label">Wallet</span>
+            <span class="value" id="demo-wallet-addr">Not connected</span>
+          </div>
+          <div class="info-row">
+            <span class="label">ETH Balance</span>
+            <span class="value" id="demo-eth-balance">--</span>
+          </div>
+          <div class="info-row">
+            <span class="label">MockUSDC Balance</span>
+            <span class="value">
+              <span id="demo-usdc-balance">--</span>
+              <button class="btn-secondary" style="margin-left:0.8rem;margin-bottom:0;font-size:0.75rem;padding:0.3rem 0.7rem" onclick="demoMintUSDC()">Mint 100 USDC</button>
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="label">x402 Server</span>
+            <span class="value">
+              <span class="status-dot" id="demo-server-dot"></span>
+              <a href="https://ageback.onrender.com" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:none;margin-left:0.4rem">ageback.onrender.com</a>
+            </span>
+          </div>
+        </div>
+        <div style="margin-top:1rem">
+          <button class="btn-secondary" onclick="demoRefreshSetup()">Refresh Status</button>
+        </div>
+      </div>
+
+      <!-- Section 2: Step-by-Step Demo -->
+      <div class="card">
+        <h2>Step-by-Step Demo</h2>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.5rem;">Walk through the full agent &rarr; x402 payment &rarr; cashback flow. Each step shows what happens under the hood.</p>
+
+        <!-- Step 1 -->
+        <div class="demo-step">
+          <div class="demo-step-header">
+            <span class="demo-step-number">1</span>
+            <div>
+              <h3 style="margin:0;font-size:1rem;">Request API (Get 402)</h3>
+              <p style="color:var(--text-muted);font-size:0.8rem;margin:0.2rem 0 0">Send a request to the x402-gated endpoint without payment. The server returns HTTP 402 with payment requirements.</p>
+            </div>
+          </div>
+          <button class="btn-primary" onclick="demoStep1()">Send Request</button>
+          <div id="demo-step1-result" class="demo-result"></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="demo-step">
+          <div class="demo-step-header">
+            <span class="demo-step-number">2</span>
+            <div>
+              <h3 style="margin:0;font-size:1rem;">Sign x402 Payment</h3>
+              <p style="color:var(--text-muted);font-size:0.8rem;margin:0.2rem 0 0">The agent's x402 client signs a USDC <code>transferWithAuthorization</code> (EIP-3009) to pay the provider.</p>
+            </div>
+          </div>
+          <div class="demo-info-box">
+            <strong>How it works in production:</strong> The <code>@x402/evm</code> client library intercepts the 402 response, reads the payment requirements, signs a gasless USDC authorization, and retries the request with the payment header attached. No wallet popup is needed because agents hold their own private keys.
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="demo-step">
+          <div class="demo-step-header">
+            <span class="demo-step-number">3</span>
+            <div>
+              <h3 style="margin:0;font-size:1rem;">Pay & Get Response + Cashback</h3>
+              <p style="color:var(--text-muted);font-size:0.8rem;margin:0.2rem 0 0">The server verifies payment, proxies to Claude API, and allocates on-chain cashback from the provider's rebate pool.</p>
+            </div>
+          </div>
+          <button class="btn-primary" onclick="demoStep3()">Execute Paid Request</button>
+          <div id="demo-step3-result" class="demo-result"></div>
+        </div>
+      </div>
+
+      <!-- Section 3: Run It Yourself -->
+      <div class="card">
+        <h2>Run It Yourself</h2>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;">To run the full end-to-end flow with a real USDC payment and on-chain cashback allocation, use the test agent script:</p>
+        <div class="demo-code-block">
+          <code>cd x402-server && node test-agent.js</code>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.82rem;margin-top:1rem;line-height:1.5;">
+          <strong>What test-agent.js does:</strong><br>
+          1. Loads agent wallet with USDC on Taiko Hoodi<br>
+          2. Creates an x402-enabled HTTP client with <code>wrapAxios()</code><br>
+          3. POSTs to <code>/v1/messages</code> &mdash; gets HTTP 402<br>
+          4. x402 client auto-signs a <code>transferWithAuthorization</code> and retries<br>
+          5. Server verifies USDC payment via the facilitator<br>
+          6. Server proxies request to Claude API and returns the response<br>
+          7. Server calls <code>RebatePoolManager.allocateRebate()</code> on-chain<br>
+          8. Agent receives cashback proportional to the provider's rebate rate
+        </p>
+        <div style="margin-top:1rem;display:flex;gap:0.8rem;flex-wrap:wrap">
+          <a href="https://github.com/Pigitaiko/Ageback" target="_blank" rel="noopener" class="btn-primary" style="text-decoration:none;display:inline-block">View on GitHub</a>
+          <a href="https://hoodi.taikoscan.io/address/0x1571922009FC4a9ed68646b9722A9df6FB1fD11d" target="_blank" rel="noopener" class="btn-secondary" style="text-decoration:none;display:inline-block;margin-bottom:0">RebatePoolManager on Taikoscan</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- MARKETPLACE TAB -->
+    <section id="tab-marketplace" class="tab-content">
       <!-- Live Server Connection -->
       <div class="card">
         <h2>x402 Server</h2>
