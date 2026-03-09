@@ -59,7 +59,77 @@ npm install @x402/core @x402/evm viem dotenv
 MockUSDC: 0xB0b25E80D3a97526b50a73Cb7cEdBCFd4016882F
 ```
 
-### 3. Create your agent
+### 3a. Add cashback to an existing agent
+
+If you already have an agent that makes HTTP requests, just swap your endpoint to Ageback and add x402 payment handling. The API is Claude-compatible — same request/response format:
+
+```diff
+- const url = "https://api.anthropic.com/v1/messages";
++ const url = "https://ageback.onrender.com/v1/messages";
+```
+
+Then wrap your HTTP client with x402 to handle payments automatically:
+
+```js
+import { x402Client, x402HTTPClient } from "@x402/core/client";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
+import { toClientEvmSigner } from "@x402/evm";
+import { createWalletClient, http, defineChain, publicActions } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+
+// One-time setup: configure x402 payment signer
+const taikoHoodi = defineChain({
+  id: 167013, name: "Taiko Hoodi",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://rpc.hoodi.taiko.xyz"] } },
+});
+
+const walletClient = createWalletClient({
+  account: privateKeyToAccount(process.env.AGENT_PRIVATE_KEY),
+  chain: taikoHoodi, transport: http(),
+}).extend(publicActions);
+walletClient.address = walletClient.account.address;
+
+const client = new x402Client();
+registerExactEvmScheme(client, {
+  signer: toClientEvmSigner(walletClient),
+  networks: ["eip155:167013"],
+});
+const x402 = new x402HTTPClient(client);
+
+// Helper: wraps any fetch call with x402 payment handling
+async function paidFetch(url, options) {
+  const resp = await fetch(url, options);
+  if (resp.status !== 402) return resp;
+
+  // Auto-sign payment and retry
+  const paymentRequired = await resp.json();
+  const payload = await x402.createPaymentPayload(paymentRequired);
+  const paymentHeaders = x402.encodePaymentSignatureHeader(payload);
+
+  return fetch(url, {
+    ...options,
+    headers: { ...options.headers, ...paymentHeaders },
+  });
+}
+
+// Use paidFetch() everywhere you currently use fetch()
+const resp = await paidFetch("https://ageback.onrender.com/v1/messages", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 200,
+    messages: [{ role: "user", content: "Hello!" }],
+  }),
+});
+const data = await resp.json();
+// Cashback is allocated on-chain automatically — check X-Cashback-Enabled header
+```
+
+That's it. Your existing agent logic stays the same — just use `paidFetch()` instead of `fetch()` and point at `ageback.onrender.com`. Cashback is earned automatically on every paid call.
+
+### 3b. Create a new agent from scratch
 
 ```js
 import { createWalletClient, http, defineChain, publicActions } from "viem";
