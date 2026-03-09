@@ -37,19 +37,35 @@ Agent                    x402 Server                  Blockchain
 
 ## For Agents — Earn Cashback
 
-### Prerequisites
+**Cashback is automatic.** If you're already using x402 to pay for API calls, just point at an Ageback provider and cashback is credited to your wallet on every call. No extra integration needed — the provider's server handles the on-chain allocation using your payment address.
 
-- A wallet with ETH on Taiko Hoodi (chain ID 167013) for gas
-- MockUSDC on Taiko Hoodi for payments
-- Node.js 18+
+### Already using x402?
 
-### 1. Install dependencies
+Just change the endpoint URL. The API is Claude-compatible:
+
+```diff
+- const url = "https://api.anthropic.com/v1/messages";
++ const url = "https://ageback.onrender.com/v1/messages";
+```
+
+That's it. Your x402 client handles payment as usual, and cashback is allocated to your wallet automatically. Check the `X-Cashback-Enabled` response header to confirm.
+
+### New to x402?
+
+x402 is the payment layer agents use to pay for API calls with USDC. To use any x402-gated service (including Ageback), you need:
+
+1. A wallet with USDC on the provider's network
+2. The `@x402` client libraries to sign payments
+
+Here's the full setup:
+
+#### 1. Install dependencies
 
 ```bash
 npm install @x402/core @x402/evm viem dotenv
 ```
 
-### 2. Get testnet funds
+#### 2. Get testnet funds
 
 **ETH**: Use the [Hoodi faucet](https://faucet.hoodi.taiko.xyz/) or bridge from Holesky.
 
@@ -59,25 +75,15 @@ npm install @x402/core @x402/evm viem dotenv
 MockUSDC: 0xB0b25E80D3a97526b50a73Cb7cEdBCFd4016882F
 ```
 
-### 3a. Add cashback to an existing agent
-
-If you already have an agent that makes HTTP requests, just swap your endpoint to Ageback and add x402 payment handling. The API is Claude-compatible — same request/response format:
-
-```diff
-- const url = "https://api.anthropic.com/v1/messages";
-+ const url = "https://ageback.onrender.com/v1/messages";
-```
-
-Then wrap your HTTP client with x402 to handle payments automatically:
+#### 3. One-time x402 setup
 
 ```js
+import { createWalletClient, http, defineChain, publicActions } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
-import { createWalletClient, http, defineChain, publicActions } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 
-// One-time setup: configure x402 payment signer
 const taikoHoodi = defineChain({
   id: 167013, name: "Taiko Hoodi",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
@@ -95,25 +101,28 @@ registerExactEvmScheme(client, {
   signer: toClientEvmSigner(walletClient),
   networks: ["eip155:167013"],
 });
-const x402 = new x402HTTPClient(client);
+const x402http = new x402HTTPClient(client);
+```
 
-// Helper: wraps any fetch call with x402 payment handling
+#### 4. Make paid requests
+
+```js
+// Helper: wraps fetch with x402 payment handling
 async function paidFetch(url, options) {
   const resp = await fetch(url, options);
   if (resp.status !== 402) return resp;
 
-  // Auto-sign payment and retry
   const paymentRequired = await resp.json();
-  const payload = await x402.createPaymentPayload(paymentRequired);
-  const paymentHeaders = x402.encodePaymentSignatureHeader(payload);
+  const payload = await x402http.createPaymentPayload(paymentRequired);
+  const headers = x402http.encodePaymentSignatureHeader(payload);
 
   return fetch(url, {
     ...options,
-    headers: { ...options.headers, ...paymentHeaders },
+    headers: { ...options.headers, ...headers },
   });
 }
 
-// Use paidFetch() everywhere you currently use fetch()
+// Use it — cashback is automatic
 const resp = await paidFetch("https://ageback.onrender.com/v1/messages", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -123,78 +132,13 @@ const resp = await paidFetch("https://ageback.onrender.com/v1/messages", {
     messages: [{ role: "user", content: "Hello!" }],
   }),
 });
+
 const data = await resp.json();
-// Cashback is allocated on-chain automatically — check X-Cashback-Enabled header
+console.log(data.content[0].text);
+console.log("Cashback:", resp.headers.get("X-Cashback-Enabled")); // "true"
 ```
 
-That's it. Your existing agent logic stays the same — just use `paidFetch()` instead of `fetch()` and point at `ageback.onrender.com`. Cashback is earned automatically on every paid call.
-
-### 3b. Create a new agent from scratch
-
-```js
-import { createWalletClient, http, defineChain, publicActions } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { x402Client, x402HTTPClient } from "@x402/core/client";
-import { registerExactEvmScheme } from "@x402/evm/exact/client";
-import { toClientEvmSigner } from "@x402/evm";
-
-const taikoHoodi = defineChain({
-  id: 167013,
-  name: "Taiko Hoodi",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://rpc.hoodi.taiko.xyz"] } },
-});
-
-const account = privateKeyToAccount("0xYOUR_PRIVATE_KEY");
-const walletClient = createWalletClient({
-  account, chain: taikoHoodi, transport: http(),
-}).extend(publicActions);
-walletClient.address = walletClient.account.address;
-
-const signer = toClientEvmSigner(walletClient);
-const client = new x402Client();
-registerExactEvmScheme(client, { signer, networks: ["eip155:167013"] });
-const httpClient = new x402HTTPClient(client);
-
-async function callClaude(prompt) {
-  const url = "https://ageback.onrender.com/v1/messages";
-  const body = {
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 200,
-    messages: [{ role: "user", content: prompt }],
-  };
-
-  // Step 1: Send request, get 402 with payment requirements
-  const initialResp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (initialResp.status !== 402) throw new Error("Expected 402");
-
-  const paymentRequired = await initialResp.json();
-
-  // Step 2: Sign USDC payment (gasless EIP-3009)
-  const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
-  const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
-
-  // Step 3: Retry with payment — cashback is allocated automatically
-  const paidResp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...paymentHeaders },
-    body: JSON.stringify(body),
-  });
-
-  const data = await paidResp.json();
-  console.log("Response:", data.content?.[0]?.text);
-  console.log("Cashback:", paidResp.headers.get("X-Cashback-Enabled"));
-}
-
-callClaude("What is x402?");
-```
-
-### 4. Run the included demo agent
+#### 5. Run the included demo agent
 
 ```bash
 cd x402-server
