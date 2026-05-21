@@ -13,6 +13,7 @@ import {
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { initCashback, allocateCashback, getPoolStatus, getAgentTierInfo, getAgentReferralInfo } from "./cashback.js";
+import { attachAgeback } from "./middleware/ageback.js";
 
 // Extend ExactEvmScheme to add Taiko Hoodi USDC support
 class TaikoExactEvmScheme extends ExactEvmScheme {
@@ -66,6 +67,33 @@ initCashback({
   referralGraph: process.env.REFERRAL_GRAPH,
 });
 
+// --- Ageback discovery + feeds (drop-in for any x402 server) ---
+// Mounts: /.well-known/ageback.json, /.well-known/x402, /providers, /feed/cashback
+// Allocation continues to flow through cashback.js so we don't double-pay.
+const ageback = attachAgeback(app, {
+  rpc: process.env.TAIKO_RPC || "https://rpc.hoodi.taiko.xyz",
+  rebatePoolManager: process.env.REBATE_POOL_MANAGER,
+  loyaltyTierManager: process.env.LOYALTY_TIER_MANAGER,
+  referralGraph: process.env.REFERRAL_GRAPH,
+  rebateAccumulator: process.env.REBATE_ACCUMULATOR,
+  providerPrivateKey: process.env.PROVIDER_PRIVATE_KEY,
+  facilitator: FACILITATOR_URL,
+  fromBlock: Number(process.env.REBATE_POOL_DEPLOYED_BLOCK || 0),
+  network: {
+    chainId: 167013,
+    caip2: TAIKO_HOODI_NETWORK,
+    name: "taiko-hoodi",
+    rpc: process.env.TAIKO_RPC || "https://rpc.hoodi.taiko.xyz",
+    explorer: "https://hoodi.taikoscan.io",
+  },
+  service: {
+    name: "Ageback Claude Proxy",
+    description: "Payment-gated Claude API with on-chain cashback on Taiko Hoodi",
+    category: "ai-inference",
+    website: "https://github.com/Pigitaiko/Ageback",
+  },
+});
+
 // --- x402 Setup: Taiko Hoodi facilitator + EVM scheme ---
 const facilitatorClient = new HTTPFacilitatorClient({
   url: FACILITATOR_URL,
@@ -74,13 +102,17 @@ const facilitatorClient = new HTTPFacilitatorClient({
 const resourceServer = new x402ResourceServer(facilitatorClient);
 resourceServer.register(TAIKO_HOODI_NETWORK, new TaikoExactEvmScheme());
 
-// Build route accepts for each model
-const messageAccepts = Object.entries(MODEL_PRICING).map(([model, price]) => ({
-  scheme: "exact",
-  price,
-  network: TAIKO_HOODI_NETWORK,
-  payTo: PAY_TO,
-}));
+// Build route accepts for each model — embeds the ageback.v1 extension so
+// x402-aware clients/explorers (x402scan, agentcash) can discover cashback.
+const messageAccepts = Object.entries(MODEL_PRICING).map(([model, price]) =>
+  ageback.buildAccepts({
+    scheme: "exact",
+    price,
+    network: TAIKO_HOODI_NETWORK,
+    payTo: PAY_TO,
+    model,
+  })
+);
 
 // Apply x402 payment middleware — only gates POST /v1/messages
 app.use(
@@ -144,6 +176,10 @@ app.get("/", (req, res) => {
       "GET /cashback/status": "Cashback pool balance",
       "GET /loyalty/tier/:id": "Agent loyalty tier",
       "GET /referral/:agent": "Agent referral info",
+      "GET /providers": "On-chain Ageback provider directory",
+      "GET /feed/cashback": "Recent RebateAllocated events (JSON feed)",
+      "GET /.well-known/ageback.json": "Machine-readable service manifest",
+      "GET /.well-known/x402": "x402 discovery pointer",
     },
     github: "https://github.com/Pigitaiko/Ageback",
   });
@@ -297,5 +333,9 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`  GET  /cashback/status     Cashback pool balance`);
   console.log(`  GET  /loyalty/tier/:id    Agent loyalty tier info`);
   console.log(`  GET  /referral/:agent     Agent referral info`);
+  console.log(`  GET  /providers           On-chain provider directory`);
+  console.log(`  GET  /feed/cashback       Recent RebateAllocated events`);
+  console.log(`  GET  /.well-known/ageback.json   Service manifest`);
+  console.log(`  GET  /.well-known/x402           x402 discovery`);
   console.log(`\nReady for agents!\n`);
 });

@@ -5,6 +5,7 @@ Cashback protocol for the agentic economy. Providers sell API access via [x402](
 **Live demo**: https://pigitaiko.github.io/Ageback/
 **Live server**: https://ageback.onrender.com
 **Contracts**: [Taiko Hoodi Taikoscan](https://hoodi.taikoscan.io/address/0x1571922009FC4a9ed68646b9722A9df6FB1fD11d)
+**Integrating?** See [INTEGRATIONS.md](./INTEGRATIONS.md) — recipes for AgentCash, x402scan, and adding Ageback to your own x402 server in 5 lines.
 
 ---
 
