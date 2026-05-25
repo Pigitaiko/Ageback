@@ -64,7 +64,29 @@ const DEFAULT_NETWORK = {
 
 const PROVIDERS_TTL_MS = 60_000;
 const FEED_TTL_MS = 15_000;
-const FEED_MAX_BLOCKS = 50_000;
+// Recent-event scan window for /feed/cashback when no fromBlock is given.
+const FEED_MAX_BLOCKS = 25_000;
+// Public Taiko Hoodi RPC caps eth_getLogs at 30k blocks/request; stay under.
+const QUERY_CHUNK_BLOCKS = 25_000;
+
+async function queryFilterChunked(contract, filter, fromBlock, toBlock) {
+  const from = Number(fromBlock);
+  const to = Number(toBlock);
+  if (to - from <= QUERY_CHUNK_BLOCKS) {
+    return await contract.queryFilter(filter, from, to);
+  }
+  const out = [];
+  for (let start = from; start <= to; start += QUERY_CHUNK_BLOCKS + 1) {
+    const end = Math.min(start + QUERY_CHUNK_BLOCKS, to);
+    try {
+      const evs = await contract.queryFilter(filter, start, end);
+      if (evs.length) out.push(...evs);
+    } catch {
+      // skip the chunk on transient RPC errors; partial results are better than none
+    }
+  }
+  return out;
+}
 
 export function parsePayerFromHeader(paymentHeader) {
   if (!paymentHeader) return null;
@@ -278,7 +300,8 @@ export function createAgeback(opts) {
     }
     const latest = await readProvider.getBlockNumber();
     const start = fromBlock || 0;
-    const events = await poolRead.queryFilter(
+    const events = await queryFilterChunked(
+      poolRead,
       poolRead.filters.ProviderRegistered(),
       start,
       latest
@@ -329,7 +352,8 @@ export function createAgeback(opts) {
     }
     const latest = await readProvider.getBlockNumber();
     const start = fb != null ? Number(fb) : Math.max(fromBlock || 0, latest - FEED_MAX_BLOCKS);
-    const events = await poolRead.queryFilter(
+    const events = await queryFilterChunked(
+      poolRead,
       poolRead.filters.RebateAllocated(),
       start,
       latest

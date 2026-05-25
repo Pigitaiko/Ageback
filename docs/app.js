@@ -1190,6 +1190,165 @@ function showTab(name) {
   if (name === "demo") {
     demoRefreshSetup();
   }
+  if (name === "integrators") {
+    loadIntegratorTab();
+  }
+}
+
+// ===== Integrators tab =====================================================
+
+function showIntSnippet(which, ev) {
+  document.querySelectorAll(".int-snippet").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".int-tab-btn").forEach(el => el.classList.remove("active"));
+  document.getElementById("int-snippet-" + which).classList.add("active");
+  if (ev && ev.target) ev.target.classList.add("active");
+}
+
+function intBaseUrl() {
+  const el = document.getElementById("int-server-url");
+  let url = (el && el.value || "").trim();
+  if (!url) url = "https://ageback.onrender.com";
+  return url.replace(/\/+$/, "");
+}
+
+function intShort(addr) {
+  if (!addr) return "";
+  return addr.slice(0, 6) + "..." + addr.slice(-4);
+}
+
+function intEscape(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+async function intFetchJson(url) {
+  const r = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+  return await r.json();
+}
+
+async function loadIntegratorTab() {
+  const base = intBaseUrl();
+  loadIntManifest(base);
+  loadIntProviders(base);
+  loadIntCashback(base);
+}
+
+async function loadIntManifest(base) {
+  const el = document.getElementById("int-manifest");
+  el.innerHTML = '<span class="int-loading">Fetching ' + intEscape(base) + '/.well-known/ageback.json ...</span>';
+  try {
+    const data = await intFetchJson(base + "/.well-known/ageback.json");
+    const cb = data && data.cashback || {};
+    const c = cb.contracts || {};
+    const chain = cb.chain || {};
+    const explorer = chain.explorer || "https://hoodi.taikoscan.io";
+    const provider = cb.provider;
+    const rows = [
+      ["Service", intEscape(data.name || "?")],
+      ["Description", intEscape(data.description || "")],
+      ["Category", intEscape(data.category || "—")],
+      ["Chain", intEscape((chain.name || "?") + " (chainId " + (chain.chainId || "?") + ", " + (chain.caip2 || "?") + ")")],
+      ["Provider address", provider
+        ? `<a href="${explorer}/address/${provider}" target="_blank"><code>${intEscape(provider)}</code></a>`
+        : "<em>read-only</em>"],
+      ["RebatePoolManager", c.rebatePoolManager
+        ? `<a href="${explorer}/address/${c.rebatePoolManager}" target="_blank"><code>${intEscape(c.rebatePoolManager)}</code></a>`
+        : "—"],
+      ["LoyaltyTierManager", c.loyaltyTierManager
+        ? `<a href="${explorer}/address/${c.loyaltyTierManager}" target="_blank"><code>${intEscape(c.loyaltyTierManager)}</code></a>`
+        : "—"],
+      ["ReferralGraph", c.referralGraph
+        ? `<a href="${explorer}/address/${c.referralGraph}" target="_blank"><code>${intEscape(c.referralGraph)}</code></a>`
+        : "—"],
+      ["Facilitator", intEscape((data.x402 && data.x402.facilitator) || "—")],
+    ];
+    const rowsHtml = rows.map(([k, v]) => `<div class="int-kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
+    el.innerHTML = `
+      <div class="int-kv-grid">${rowsHtml}</div>
+      <details class="int-raw"><summary>Raw JSON</summary><pre class="codeblock">${intEscape(JSON.stringify(data, null, 2))}</pre></details>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="int-error">Failed: ${intEscape(err.message)}</div>`;
+  }
+}
+
+async function loadIntProviders(base) {
+  const el = document.getElementById("int-providers");
+  const meta = document.getElementById("int-providers-meta");
+  meta.textContent = "";
+  el.innerHTML = '<span class="int-loading">Fetching ' + intEscape(base) + '/providers ...</span>';
+  try {
+    const data = await intFetchJson(base + "/providers");
+    const list = data.providers || [];
+    meta.textContent = `${list.length} provider${list.length === 1 ? "" : "s"} · network ${data.network || "?"} · contract ${intShort(data.contract || "")}`;
+    if (list.length === 0) {
+      el.innerHTML = '<div class="int-empty">No providers registered on this contract yet.</div>';
+      return;
+    }
+    const explorer = "https://hoodi.taikoscan.io";
+    const rows = list.map(p => `
+      <tr>
+        <td>
+          <div class="int-pname">${intEscape(p.name || "—")}</div>
+          <div class="int-pdesc">${intEscape(p.description || "")}</div>
+        </td>
+        <td><a href="${explorer}/address/${p.address}" target="_blank"><code>${intEscape(intShort(p.address))}</code></a></td>
+        <td>${intEscape(p.category || "—")}</td>
+        <td><strong>${intEscape(p.rebatePercent || ((p.rebateBps / 100).toFixed(2) + "%"))}</strong></td>
+        <td>${intEscape((+p.deposited).toFixed(4))} ETH</td>
+        <td>${intEscape((+p.available).toFixed(4))} ETH</td>
+        <td>${p.isActive ? '<span class="int-pill int-pill-on">active</span>' : '<span class="int-pill int-pill-off">inactive</span>'}</td>
+      </tr>
+    `).join("");
+    el.innerHTML = `
+      <div class="int-table-wrap">
+        <table class="int-table">
+          <thead><tr><th>Service</th><th>Address</th><th>Category</th><th>Rebate</th><th>Deposited</th><th>Available</th><th>Status</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="int-error">Failed: ${intEscape(err.message)}</div>`;
+  }
+}
+
+async function loadIntCashback(base) {
+  const el = document.getElementById("int-cashback");
+  const meta = document.getElementById("int-cashback-meta");
+  meta.textContent = "";
+  el.innerHTML = '<span class="int-loading">Fetching ' + intEscape(base) + '/feed/cashback?limit=25 ...</span>';
+  try {
+    const data = await intFetchJson(base + "/feed/cashback?limit=25");
+    const items = data.items || [];
+    meta.textContent = `${items.length} recent event${items.length === 1 ? "" : "s"} · blocks ${data.fromBlock || "?"} → ${data.toBlock || "?"} · contract ${intShort(data.contract || "")}`;
+    if (items.length === 0) {
+      el.innerHTML = '<div class="int-empty">No RebateAllocated events in the scanned window.</div>';
+      return;
+    }
+    const explorer = "https://hoodi.taikoscan.io";
+    const rows = items.map(it => `
+      <tr>
+        <td><code>${intEscape(String(it.blockNumber))}</code></td>
+        <td><a href="${explorer}/address/${it.provider}" target="_blank"><code>${intEscape(intShort(it.provider))}</code></a></td>
+        <td><a href="${explorer}/address/${it.agent}" target="_blank"><code>${intEscape(intShort(it.agent))}</code></a></td>
+        <td><strong>${intEscape((+it.amount).toFixed(6))}</strong></td>
+        <td><a href="${it.explorerUrl || (explorer + '/tx/' + it.txHash)}" target="_blank"><code>${intEscape(intShort(it.txHash))}</code></a></td>
+      </tr>
+    `).join("");
+    el.innerHTML = `
+      <div class="int-table-wrap">
+        <table class="int-table">
+          <thead><tr><th>Block</th><th>Provider</th><th>Agent</th><th>Rebate</th><th>Tx</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    el.innerHTML = `<div class="int-error">Failed: ${intEscape(err.message)}</div>`;
+  }
 }
 
 function showStatus(msg, type) {

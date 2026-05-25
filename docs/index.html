@@ -29,6 +29,7 @@
     <button class="nav-btn" onclick="showTab('referrals')">Referrals</button>
     <button class="nav-btn" onclick="showTab('claims')">Claims</button>
     <button class="nav-btn" onclick="showTab('admin')">Admin</button>
+    <button class="nav-btn" onclick="showTab('integrators')">Integrators</button>
   </nav>
 
   <main>
@@ -490,6 +491,145 @@
           </div>
           <button type="submit" class="btn-primary">Update Root</button>
         </form>
+      </div>
+    </section>
+
+    <!-- INTEGRATORS TAB -->
+    <section id="tab-integrators" class="tab-content">
+      <div class="section integrator-hero">
+        <h2>Integrate Ageback</h2>
+        <p class="integrator-lead">
+          Add on-chain cashback to any x402-gated service, or ingest Ageback's
+          live feeds into your aggregator / explorer. Full recipes in
+          <a href="https://github.com/Pigitaiko/Ageback/blob/main/INTEGRATIONS.md" target="_blank">INTEGRATIONS.md</a>.
+        </p>
+        <div class="integrator-server-row">
+          <label for="int-server-url">Live data from:</label>
+          <input type="text" id="int-server-url" value="https://ageback.onrender.com" placeholder="https://your-ageback-server">
+          <button class="btn-secondary" onclick="loadIntegratorTab()">Refresh</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Quick start</h2>
+        <div class="integrator-tabs">
+          <button class="int-tab-btn active" onclick="showIntSnippet('provider', event)">Service provider</button>
+          <button class="int-tab-btn" onclick="showIntSnippet('agent', event)">Agent</button>
+          <button class="int-tab-btn" onclick="showIntSnippet('explorer', event)">Aggregator / Explorer</button>
+        </div>
+
+        <div id="int-snippet-provider" class="int-snippet active">
+          <p class="snippet-caption">Add cashback to any x402 Express server in 5 lines:</p>
+          <pre class="codeblock">npm install @ageback/middleware ethers express \
+  @x402/express @x402/core @x402/evm</pre>
+          <pre class="codeblock">import { attachAgeback } from "@ageback/middleware";
+
+const ageback = attachAgeback(app, {
+  rpc: process.env.TAIKO_RPC,
+  rebatePoolManager: process.env.REBATE_POOL_MANAGER,
+  providerPrivateKey: process.env.PROVIDER_PRIVATE_KEY,
+  service: { name: "My API", category: "data" },
+});
+
+app.use(paymentMiddleware({
+  "POST /my-route": {
+    accepts: [ageback.buildAccepts({ price: "$0.01", payTo: PAY_TO })],
+    description: "Paid route with Ageback cashback",
+    mimeType: "application/json",
+  },
+}, resourceServer, undefined, undefined, true));
+
+app.post("/my-route", (req, res) => {
+  ageback.allocateForRequest(req, res, { paymentAmountUsd: "0.01" });
+  res.json({ ok: true });
+});</pre>
+        </div>
+
+        <div id="int-snippet-agent" class="int-snippet">
+          <p class="snippet-caption">Agents already paying with x402 get cashback automatically. For rich UX:</p>
+          <pre class="codeblock">npm install @ageback/client</pre>
+          <pre class="codeblock">import { createAgebackClient } from "@ageback/client";
+
+const ageback = createAgebackClient({ paidFetch }); // your @x402 fetch
+const result = await ageback.fetch("https://ageback.onrender.com/v1/messages", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 50,
+    messages: [{ role: "user", content: "hi" }],
+  }),
+});
+console.log(result.cashback);
+// { enabled: true, bps: 300, rebatePercent: "3.00%",
+//   agent: "0x...", contract: "0x...", txHash: "0x..." }</pre>
+        </div>
+
+        <div id="int-snippet-explorer" class="int-snippet">
+          <p class="snippet-caption">Three HTTP endpoints — no RPC or ABI required:</p>
+          <pre class="codeblock"># Service-level metadata (name, chain, contracts, rebate %)
+curl https://ageback.onrender.com/.well-known/ageback.json
+
+# Every Ageback-enabled provider, one HTTP call
+curl https://ageback.onrender.com/providers
+
+# Recent RebateAllocated events as JSON (provider, agent, amount, txHash, explorerUrl)
+curl 'https://ageback.onrender.com/feed/cashback?limit=200'</pre>
+          <p class="snippet-caption">x402 402 responses also self-advertise the cashback layer via the
+          <code>extensions["ageback.v1"]</code> field — read it directly from the 402.</p>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Live discovery — <code>/.well-known/ageback.json</code></h2>
+        <div id="int-manifest" class="int-feed-card">Loading...</div>
+      </div>
+
+      <div class="section">
+        <h2>Providers feed — <code>GET /providers</code></h2>
+        <p class="int-feed-meta" id="int-providers-meta"></p>
+        <div id="int-providers" class="int-feed-card">Loading...</div>
+      </div>
+
+      <div class="section">
+        <h2>Cashback events — <code>GET /feed/cashback</code></h2>
+        <p class="int-feed-meta" id="int-cashback-meta"></p>
+        <div id="int-cashback" class="int-feed-card">Loading...</div>
+      </div>
+
+      <div class="section">
+        <h2><code>ageback.v1</code> extension schema</h2>
+        <p>
+          Service providers include this object inside each <code>accepts</code> entry
+          so x402 clients and explorers can discover cashback metadata directly from the 402.
+        </p>
+        <div class="schema-table-wrap">
+          <table class="schema-table">
+            <thead>
+              <tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>rebatePoolManager</code></td><td>address</td><td>yes</td><td>Contract holding the rebate pool</td></tr>
+              <tr><td><code>provider</code></td><td>address</td><td>yes</td><td>On-chain provider entry the server settles to</td></tr>
+              <tr><td><code>rebateBps</code></td><td>number</td><td>recommended</td><td>Active rate in basis points (300 = 3%)</td></tr>
+              <tr><td><code>manifest</code></td><td>string</td><td>recommended</td><td>Path or URL to <code>/.well-known/ageback.json</code></td></tr>
+              <tr><td><code>loyaltyTierManager</code></td><td>address</td><td>optional</td><td>If the provider records tier progression</td></tr>
+              <tr><td><code>referralGraph</code></td><td>address</td><td>optional</td><td>If the provider records referral volume</td></tr>
+              <tr><td><code>model</code></td><td>string</td><td>optional</td><td>For multi-tier APIs (e.g. Claude model id)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Resources</h2>
+        <ul class="int-resources">
+          <li><a href="https://github.com/Pigitaiko/Ageback/blob/main/INTEGRATIONS.md" target="_blank">INTEGRATIONS.md</a> — full recipes for providers, AgentCash, x402scan, agents</li>
+          <li><a href="https://github.com/Pigitaiko/Ageback/tree/main/packages/middleware" target="_blank"><code>@ageback/middleware</code></a> — server-side toolkit</li>
+          <li><a href="https://github.com/Pigitaiko/Ageback/tree/main/packages/client" target="_blank"><code>@ageback/client</code></a> — agent-side helper</li>
+          <li><a href="https://github.com/Pigitaiko/Ageback/blob/main/examples/integrate-existing-x402-server.js" target="_blank">examples/integrate-existing-x402-server.js</a> — runnable demo</li>
+          <li><a href="https://www.x402.org/" target="_blank">x402.org</a> · <a href="https://agentcash.dev/" target="_blank">agentcash.dev</a> · <a href="https://www.x402scan.com/" target="_blank">x402scan.com</a></li>
+        </ul>
       </div>
     </section>
   </main>

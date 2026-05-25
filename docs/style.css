@@ -799,3 +799,109 @@ a.trending-agent-card {
   .search-box input { width: 100%; }
   .trending-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== Integrators tab ===== */
+.integrator-hero { padding-bottom: 1.2rem; }
+.integrator-lead { color: var(--text-muted, #aab); margin: 0.4rem 0 1rem; }
+.integrator-server-row {
+  display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+.integrator-server-row label { font-size: 0.9rem; color: var(--text-muted, #aab); }
+.integrator-server-row input {
+  flex: 1; min-width: 260px;
+  background: var(--surface, #1a1c24);
+  color: var(--text, #e8eaf0);
+  border: 1px solid var(--border, #2a2d38);
+  padding: 0.45rem 0.6rem; border-radius: 6px; font: inherit;
+}
+.integrator-tabs {
+  display: flex; gap: 0.4rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border, #2a2d38);
+  margin-bottom: 0.8rem;
+}
+.int-tab-btn {
+  background: transparent; color: var(--text-muted, #aab);
+  border: none; padding: 0.55rem 0.9rem; cursor: pointer;
+  border-bottom: 2px solid transparent; font: inherit;
+}
+.int-tab-btn:hover { color: var(--text, #e8eaf0); }
+.int-tab-btn.active {
+  color: var(--primary, #7c5cff);
+  border-bottom-color: var(--primary, #7c5cff);
+}
+.int-snippet { display: none; }
+.int-snippet.active { display: block; }
+.snippet-caption { color: var(--text-muted, #aab); margin: 0.4rem 0 0.4rem; }
+.codeblock {
+  background: #0c0d12; color: #d6daf0;
+  border: 1px solid var(--border, #2a2d38);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0.4rem 0 0.8rem;
+}
+.int-feed-card {
+  background: var(--surface, #1a1c24);
+  border: 1px solid var(--border, #2a2d38);
+  border-radius: 8px;
+  padding: 1rem;
+}
+.int-feed-meta { color: var(--text-muted, #aab); margin: 0.2rem 0 0.6rem; font-size: 0.9rem; }
+.int-loading { color: var(--text-muted, #aab); font-style: italic; }
+.int-empty { color: var(--text-muted, #aab); font-style: italic; }
+.int-error { color: #ff7066; }
+.int-kv-grid {
+  display: grid; grid-template-columns: 1fr; gap: 0.4rem;
+}
+.int-kv {
+  display: grid; grid-template-columns: 180px 1fr;
+  gap: 1rem; padding: 0.4rem 0;
+  border-bottom: 1px dashed var(--border, #2a2d38);
+}
+.int-kv:last-child { border-bottom: none; }
+.int-kv .k { color: var(--text-muted, #aab); }
+.int-kv .v { color: var(--text, #e8eaf0); overflow-wrap: anywhere; }
+.int-kv .v code { font-size: 0.85em; }
+.int-raw { margin-top: 0.8rem; }
+.int-raw summary { cursor: pointer; color: var(--text-muted, #aab); }
+.int-table-wrap { overflow-x: auto; }
+.int-table {
+  width: 100%; border-collapse: collapse; font-size: 0.92rem;
+}
+.int-table th, .int-table td {
+  text-align: left; padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border, #2a2d38);
+  vertical-align: top;
+}
+.int-table th {
+  color: var(--text-muted, #aab); font-weight: 600;
+  border-bottom: 1px solid var(--border, #2a2d38);
+}
+.int-pname { color: var(--text, #e8eaf0); font-weight: 600; }
+.int-pdesc { color: var(--text-muted, #aab); font-size: 0.85em; margin-top: 0.15rem; }
+.int-pill {
+  display: inline-block; padding: 0.15rem 0.5rem;
+  border-radius: 999px; font-size: 0.8em;
+}
+.int-pill-on { background: rgba(80, 200, 120, 0.15); color: #5ee083; }
+.int-pill-off { background: rgba(200, 80, 80, 0.15); color: #ff8a86; }
+.schema-table-wrap { overflow-x: auto; }
+.schema-table {
+  width: 100%; border-collapse: collapse; font-size: 0.92rem;
+}
+.schema-table th, .schema-table td {
+  text-align: left; padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border, #2a2d38);
+}
+.schema-table th { color: var(--text-muted, #aab); font-weight: 600; }
+.int-resources { padding-left: 1.2rem; line-height: 1.9; }
+.int-resources a { color: var(--primary, #7c5cff); text-decoration: none; }
+.int-resources a:hover { text-decoration: underline; }
+
+@media (max-width: 768px) {
+  .int-kv { grid-template-columns: 1fr; gap: 0.2rem; }
+  .int-kv .k { font-size: 0.8em; }
+}
