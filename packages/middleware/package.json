@@ -1,0 +1,43 @@
+{
+  "name": "@ageback/middleware",
+  "version": "0.1.0",
+  "description": "Drop-in cashback layer for any x402 Express server. Wires on-chain rebate allocation, discovery manifest, and JSON feeds (providers, cashback events) consumable by AgentCash, x402scan, and any agent runtime.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "x402",
+    "ageback",
+    "cashback",
+    "agentic-payments",
+    "taiko",
+    "express",
+    "middleware"
+  ],
+  "homepage": "https://github.com/Pigitaiko/ageback#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pigitaiko/Ageback.git",
+    "directory": "packages/middleware"
+  },
+  "bugs": {
+    "url": "https://github.com/Pigitaiko/Ageback/issues"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "ethers": "^6.0.0",
+    "express": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "express": { "optional": true }
+  }
+}

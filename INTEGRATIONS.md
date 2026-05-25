@@ -8,10 +8,16 @@ This document is the integration contract.
 
 ## 1. Service Provider — add Ageback to your x402 server
 
+```bash
+npm install @ageback/middleware ethers
+# plus the x402 stack if you don't already have it:
+npm install @x402/express @x402/core @x402/evm express
+```
+
 You already have an x402 Express server. Add five things:
 
 ```diff
-+ import { attachAgeback } from "./middleware/ageback.js";
++ import { attachAgeback } from "@ageback/middleware";
 
   const app = express();
 
@@ -152,12 +158,17 @@ Suggested ingestion:
 
 ---
 
-## 4. Agents — using `ageback-fetch`
+## 4. Agents — using `@ageback/client`
 
 Agents already paying with x402 don't need to do anything — cashback is server-side. But for richer UX (showing rebate in agent logs, discovering services), use the helper:
 
+```bash
+npm install @ageback/client
+```
+
+
 ```js
-import { createAgebackClient } from "./sdk/ageback-fetch.js";
+import { createAgebackClient } from "@ageback/client";
 
 const ageback = createAgebackClient({ paidFetch }); // your @x402 fetch
 
@@ -206,3 +217,23 @@ Clients/explorers MUST treat unknown fields as forward-compatible — Ageback ma
 
 - `ageback.v1` — current. Additive changes only.
 - Breaking changes ship as `ageback.v2` alongside `v1` for one full quarter.
+
+---
+
+## 7. npm packages
+
+The canonical, publishable copies of the middleware and client live under `packages/` in this repo:
+
+| Path | Package |
+|---|---|
+| `packages/middleware/` | `@ageback/middleware` — server-side toolkit |
+| `packages/client/` | `@ageback/client` — agent-side helper |
+
+To publish (one-time setup needs an npm account with rights to `@ageback`):
+
+```bash
+cd packages/middleware && npm publish --access=public
+cd ../client && npm publish --access=public
+```
+
+The in-repo `x402-server/server.js` imports via a relative path so the Render deploy keeps working without monorepo setup.

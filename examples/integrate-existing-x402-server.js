@@ -27,7 +27,8 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 
 // [+] 1. Import the Ageback toolkit.
-import { attachAgeback } from "../x402-server/middleware/ageback.js";
+//        After publish, partners do: import { attachAgeback } from "@ageback/middleware";
+import { attachAgeback } from "../packages/middleware/index.js";
 
 class TaikoExactEvmScheme extends ExactEvmScheme {
   getDefaultAsset(network) {

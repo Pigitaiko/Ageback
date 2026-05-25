@@ -13,7 +13,10 @@ import {
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { initCashback, allocateCashback, getPoolStatus, getAgentTierInfo, getAgentReferralInfo } from "./cashback.js";
-import { attachAgeback } from "./middleware/ageback.js";
+// Imports the canonical package by relative path so the Render deploy
+// (which installs only x402-server/) keeps working without monorepo setup.
+// External consumers should `npm install @ageback/middleware` instead.
+import { attachAgeback } from "../packages/middleware/index.js";
 
 // Extend ExactEvmScheme to add Taiko Hoodi USDC support
 class TaikoExactEvmScheme extends ExactEvmScheme {
