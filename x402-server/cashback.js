@@ -32,10 +32,10 @@ export function initCashback(config) {
     console.error("[cashback] PROVIDER_PRIVATE_KEY not set — cashback disabled");
     return;
   }
-  provider = new ethers.JsonRpcProvider(config.taikoRpc, {
-    name: "taiko-hoodi",
-    chainId: 167013,
-    ensAddress: null, // Taiko Hoodi doesn't support ENS
+  provider = new ethers.JsonRpcProvider(config.rpc, {
+    name: config.chainName || "evm",
+    chainId: config.chainId,
+    ensAddress: null,
   });
   signer = new ethers.Wallet(config.providerPrivateKey, provider);
 

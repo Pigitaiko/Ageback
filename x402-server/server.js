@@ -17,17 +17,41 @@ import { initCashback, allocateCashback, getPoolStatus, getAgentTierInfo, getAge
 // External consumers do the same via `npm install @ageback/middleware`.
 import { attachAgeback } from "@ageback/middleware";
 
-// Extend ExactEvmScheme to add Taiko Hoodi USDC support
-class TaikoExactEvmScheme extends ExactEvmScheme {
+// Network configs keyed by CHAIN env var
+const NETWORK_CONFIGS = {
+  "taiko-hoodi": {
+    chainId: 167013,
+    caip2: "eip155:167013",
+    facilitator: "https://facilitator.taiko.xyz",
+    rpcDefault: "https://rpc.hoodi.taiko.xyz",
+    explorer: "https://hoodi.taikoscan.io",
+    usdc: { address: "0xB0b25E80D3a97526b50a73Cb7cEdBCFd4016882F", name: "USD Coin", version: "2", decimals: 6 },
+  },
+  "base": {
+    chainId: 8453,
+    caip2: "eip155:8453",
+    facilitator: "https://x402.org/facilitator",
+    rpcDefault: "https://mainnet.base.org",
+    explorer: "https://basescan.org",
+    usdc: { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", name: "USD Coin", version: "2", decimals: 6 },
+  },
+  "base-sepolia": {
+    chainId: 84532,
+    caip2: "eip155:84532",
+    facilitator: "https://x402.org/facilitator",
+    rpcDefault: "https://sepolia.base.org",
+    explorer: "https://sepolia.basescan.org",
+    usdc: { address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", name: "USD Coin", version: "2", decimals: 6 },
+  },
+};
+
+const CHAIN = process.env.CHAIN || "taiko-hoodi";
+const NET = NETWORK_CONFIGS[CHAIN];
+if (!NET) throw new Error(`Unknown CHAIN: ${CHAIN}. Use taiko-hoodi, base, or base-sepolia`);
+
+class ConfiguredEvmScheme extends ExactEvmScheme {
   getDefaultAsset(network) {
-    if (network === "eip155:167013") {
-      return {
-        address: "0xB0b25E80D3a97526b50a73Cb7cEdBCFd4016882F",
-        name: "USD Coin",
-        version: "2",
-        decimals: 6,
-      };
-    }
+    if (network === NET.caip2) return NET.usdc;
     return super.getDefaultAsset(network);
   }
 }
@@ -47,9 +71,8 @@ app.use((req, res, next) => {
 // --- Config ---
 const PORT = process.env.PORT || 4020;
 const PAY_TO = process.env.PAY_TO_ADDRESS;
-const TAIKO_HOODI_NETWORK = "eip155:167013";
-const FACILITATOR_URL =
-  process.env.FACILITATOR_URL || "https://facilitator.taiko.xyz";
+const ACTIVE_NETWORK = NET.caip2;
+const FACILITATOR_URL = process.env.FACILITATOR_URL || NET.facilitator;
 
 // --- Pricing per model (USD) ---
 const MODEL_PRICING = {
@@ -62,7 +85,8 @@ const DEFAULT_PRICE = "$0.01";
 
 // --- Initialize cashback module ---
 initCashback({
-  taikoRpc: process.env.TAIKO_RPC || "https://rpc.hoodi.taiko.xyz",
+  rpc: process.env.CHAIN_RPC || NET.rpcDefault,
+  chainId: NET.chainId,
   providerPrivateKey: process.env.PROVIDER_PRIVATE_KEY,
   rebatePoolManager: process.env.REBATE_POOL_MANAGER,
   loyaltyTierManager: process.env.LOYALTY_TIER_MANAGER,
@@ -73,7 +97,7 @@ initCashback({
 // Mounts: /.well-known/ageback.json, /.well-known/x402, /providers, /feed/cashback
 // Allocation continues to flow through cashback.js so we don't double-pay.
 const ageback = attachAgeback(app, {
-  rpc: process.env.TAIKO_RPC || "https://rpc.hoodi.taiko.xyz",
+  rpc: process.env.CHAIN_RPC || NET.rpcDefault,
   rebatePoolManager: process.env.REBATE_POOL_MANAGER,
   loyaltyTierManager: process.env.LOYALTY_TIER_MANAGER,
   referralGraph: process.env.REFERRAL_GRAPH,
@@ -82,27 +106,27 @@ const ageback = attachAgeback(app, {
   facilitator: FACILITATOR_URL,
   fromBlock: Number(process.env.REBATE_POOL_DEPLOYED_BLOCK || 0),
   network: {
-    chainId: 167013,
-    caip2: TAIKO_HOODI_NETWORK,
-    name: "taiko-hoodi",
-    rpc: process.env.TAIKO_RPC || "https://rpc.hoodi.taiko.xyz",
-    explorer: "https://hoodi.taikoscan.io",
+    chainId: NET.chainId,
+    caip2: ACTIVE_NETWORK,
+    name: CHAIN,
+    rpc: process.env.CHAIN_RPC || NET.rpcDefault,
+    explorer: NET.explorer,
   },
   service: {
     name: "Ageback Claude Proxy",
-    description: "Payment-gated Claude API with on-chain cashback on Taiko Hoodi",
+    description: `Payment-gated Claude API with on-chain cashback on ${CHAIN}`,
     category: "ai-inference",
     website: "https://github.com/Pigitaiko/Ageback",
   },
 });
 
-// --- x402 Setup: Taiko Hoodi facilitator + EVM scheme ---
+// --- x402 Setup: facilitator + EVM scheme ---
 const facilitatorClient = new HTTPFacilitatorClient({
   url: FACILITATOR_URL,
 });
 
 const resourceServer = new x402ResourceServer(facilitatorClient);
-resourceServer.register(TAIKO_HOODI_NETWORK, new TaikoExactEvmScheme());
+resourceServer.register(ACTIVE_NETWORK, new ConfiguredEvmScheme());
 
 // Build route accepts for each model — embeds the ageback.v1 extension so
 // x402-aware clients/explorers (x402scan, agentcash) can discover cashback.
@@ -110,7 +134,7 @@ const messageAccepts = Object.entries(MODEL_PRICING).map(([model, price]) =>
   ageback.buildAccepts({
     scheme: "exact",
     price,
-    network: TAIKO_HOODI_NETWORK,
+    network: ACTIVE_NETWORK,
     payTo: PAY_TO,
     model,
   })
@@ -170,7 +194,7 @@ app.get("/", (req, res) => {
   res.json({
     name: "Ageback — x402 Cashback Protocol",
     description: "Payment-gated Claude API with automatic cashback on Taiko Hoodi",
-    network: TAIKO_HOODI_NETWORK,
+    network: ACTIVE_NETWORK,
     endpoints: {
       "POST /v1/messages": "Claude API (x402 payment required)",
       "GET /health": "Server status + pool info",
@@ -194,7 +218,7 @@ app.get("/health", async (req, res) => {
     res.json({
       status: "ok",
       facilitator: FACILITATOR_URL,
-      network: TAIKO_HOODI_NETWORK,
+      network: ACTIVE_NETWORK,
       cashbackPool: pool,
       pricing: MODEL_PRICING,
     });
@@ -304,7 +328,7 @@ app.get("/info", async (req, res) => {
     res.json({
       server: "x402-cashback-server",
       version: "1.0.0",
-      network: TAIKO_HOODI_NETWORK,
+      network: ACTIVE_NETWORK,
       facilitator: FACILITATOR_URL,
       payTo: PAY_TO,
       pricing: MODEL_PRICING,
@@ -322,10 +346,10 @@ app.get("/info", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n=== x402 Cashback Server (Taiko Hoodi) ===`);
+  console.log(`\n=== x402 Cashback Server (${CHAIN}) ===`);
   console.log(`Port:        ${PORT}`);
   console.log(`Pay to:      ${PAY_TO}`);
-  console.log(`Network:     ${TAIKO_HOODI_NETWORK}`);
+  console.log(`Network:     ${ACTIVE_NETWORK}`);
   console.log(`Facilitator: ${FACILITATOR_URL}`);
   console.log(`Models:      ${Object.keys(MODEL_PRICING).join(", ")}`);
   console.log(`\nEndpoints:`);

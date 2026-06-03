@@ -1,15 +1,26 @@
 const hre = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log("Registering provider:", deployer.address);
+  console.log("Balance:", hre.ethers.formatEther(await hre.ethers.provider.getBalance(deployer.address)), "ETH");
 
-  const poolManager = await hre.ethers.getContractAt(
-    "RebatePoolManager",
-    "0x1571922009FC4a9ed68646b9722A9df6FB1fD11d"
-  );
+  // Read contract address from deployment.json or REBATE_POOL_MANAGER env var
+  let poolManagerAddr = process.env.REBATE_POOL_MANAGER;
+  if (!poolManagerAddr) {
+    const deploymentPath = path.join(__dirname, "..", "frontend", "deployment.json");
+    if (!fs.existsSync(deploymentPath)) {
+      throw new Error("No REBATE_POOL_MANAGER env var and no frontend/deployment.json found. Run deploy.js first.");
+    }
+    const deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
+    poolManagerAddr = deployment.contracts.RebatePoolManager;
+    console.log("Using address from deployment.json:", poolManagerAddr);
+  }
 
-  // Check if already registered
+  const poolManager = await hre.ethers.getContractAt("RebatePoolManager", poolManagerAddr);
+
   const info = await poolManager.providers(deployer.address);
   if (info.isActive) {
     console.log("Already registered as provider!");
@@ -18,13 +29,15 @@ async function main() {
     return;
   }
 
-  // Register: 3% cashback, 0.1 ETH deposit
+  const network = hre.network.name;
+  const apiEndpoint = process.env.API_ENDPOINT || `https://ageback.onrender.com/v1/messages`;
+
   const tx = await poolManager.registerProvider(
     300, // 3% rebate in basis points
-    "Claude AI Reseller",
-    "x402 payment-gated Claude API with cashback on Taiko Hoodi",
-    "http://localhost:4020/v1/messages",
-    "AI Services",
+    "Ageback AI Gateway",
+    `x402 payment-gated Claude API with cashback on ${network}`,
+    apiEndpoint,
+    "AI Inference",
     { value: hre.ethers.parseEther("0.1") }
   );
 
@@ -32,12 +45,11 @@ async function main() {
   const receipt = await tx.wait();
   console.log("Registered! Block:", receipt.blockNumber);
 
-  // Verify
-  const provider = await poolManager.providers(deployer.address);
+  const registered = await poolManager.providers(deployer.address);
   console.log("\nProvider status:");
-  console.log("  Active:", provider.isActive);
-  console.log("  Deposited:", hre.ethers.formatEther(provider.depositedAmount), "ETH");
-  console.log("  Rebate:", Number(provider.rebatePercentage) / 100 + "%");
+  console.log("  Active:", registered.isActive);
+  console.log("  Deposited:", hre.ethers.formatEther(registered.depositedAmount), "ETH");
+  console.log("  Rebate:", Number(registered.rebatePercentage) / 100 + "%");
 
   const balance = await poolManager.getProviderBalance(deployer.address);
   console.log("  Available balance:", hre.ethers.formatEther(balance), "ETH");
