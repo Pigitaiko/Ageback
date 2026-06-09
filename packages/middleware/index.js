@@ -249,7 +249,7 @@ export function createAgeback(opts) {
     };
   }
 
-  async function allocateForRequest(req, res, { paymentAmountUsd, agentId } = {}) {
+  async function allocateForRequest(req, res, { paymentAmountUsd, agentId, endpoint } = {}) {
     const agentAddress = readPayerFromReq(req);
     const bps = await getRebateBps();
 
@@ -262,6 +262,21 @@ export function createAgeback(opts) {
     } else if (res) {
       res.set("X-Cashback-Enabled", signer ? "true" : "false");
       if (bps != null) res.set("X-Cashback-Bps", String(bps));
+    }
+
+    // Record revenue regardless of on-chain rebate path (a valid x402 payment
+    // happened by the time the route handler runs).
+    if (opts.usageStore && agentAddress && paymentAmountUsd != null) {
+      try {
+        opts.usageStore.recordPayment({
+          payer: agentAddress,
+          usd: Number(paymentAmountUsd) || 0,
+          protocol: "x402",
+          endpoint: endpoint || (req && (req.method + " " + (req.route?.path || req.path))) || null,
+        });
+      } catch {
+        // never crash the response
+      }
     }
 
     if (!signer || !poolWrite || !agentAddress) {
@@ -279,6 +294,17 @@ export function createAgeback(opts) {
         .find((e) => e?.name === "RebateAllocated");
       const rebateAmount = event ? ethers.formatEther(event.args.amount) : "unknown";
       if (res) res.set("X-Cashback-Tx", receipt.hash);
+
+      if (opts.usageStore && event) {
+        try {
+          opts.usageStore.recordCashback({
+            agent: agentAddress,
+            eth: Number(rebateAmount) || 0,
+          });
+        } catch {
+          // never crash the response
+        }
+      }
 
       if (tierWrite && agentId) {
         tierWrite.recordTransaction(agentId, txAmount).then((t) => t.wait()).catch(() => {});
@@ -444,3 +470,17 @@ export function attachAgeback(app, opts) {
 
   return ag;
 }
+
+// Re-export usage subsystem so callers can do:
+//   import { attachAgeback, attachUsageApi } from "@ageback/middleware";
+export {
+  attachUsageApi,
+  makeRequestRecorder,
+  createUsageStore,
+  createKeyStore,
+  createUsageRouter,
+  generateKey,
+  hashKey,
+  parseWindow,
+  utcDayKey,
+} from "./usage/index.js";

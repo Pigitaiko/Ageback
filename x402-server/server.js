@@ -15,7 +15,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { initCashback, allocateCashback, getPoolStatus, getAgentTierInfo, getAgentReferralInfo } from "./cashback.js";
 // Installed as a local file: dependency (see x402-server/package.json).
 // External consumers do the same via `npm install @ageback/middleware`.
-import { attachAgeback } from "@ageback/middleware";
+import { attachAgeback, attachUsageApi } from "@ageback/middleware";
 
 // Network configs keyed by CHAIN env var
 const NETWORK_CONFIGS = {
@@ -93,10 +93,21 @@ initCashback({
   referralGraph: process.env.REFERRAL_GRAPH,
 });
 
+// --- Usage tracking ---
+// Mounts: /usage/{summary,revenue,requests,wallets,cashback} (auth-gated).
+// Also installs a request recorder so every response is classified
+// (paid / rejected_402 / free) and rolled up per UTC day.
+const usage = await attachUsageApi(app, {
+  storePath: process.env.USAGE_DB_PATH || null,
+  keysPath: process.env.USAGE_KEYS_PATH || null,
+  envKeys: process.env.AGEBACK_USAGE_API_KEYS || "",
+});
+
 // --- Ageback discovery + feeds (drop-in for any x402 server) ---
 // Mounts: /.well-known/ageback.json, /.well-known/x402, /providers, /feed/cashback
 // Allocation continues to flow through cashback.js so we don't double-pay.
 const ageback = attachAgeback(app, {
+  usageStore: usage.store,
   rpc: process.env.CHAIN_RPC || NET.rpcDefault,
   rebatePoolManager: process.env.REBATE_POOL_MANAGER,
   loyaltyTierManager: process.env.LOYALTY_TIER_MANAGER,
@@ -363,5 +374,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`  GET  /feed/cashback       Recent RebateAllocated events`);
   console.log(`  GET  /.well-known/ageback.json   Service manifest`);
   console.log(`  GET  /.well-known/x402           x402 discovery`);
+  console.log(`  GET  /usage/summary       Usage rollup (auth required)`);
+  console.log(`  GET  /usage/{revenue,requests,wallets,cashback}  (auth required)`);
   console.log(`\nReady for agents!\n`);
 });

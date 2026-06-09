@@ -90,6 +90,23 @@ X-Cashback-Agent, X-Cashback-Bps, X-Cashback-Tx
 | `facilitator` | optional | Surfaced in the manifest |
 | `fromBlock` | optional | Earliest block to scan for `ProviderRegistered` / `RebateAllocated` events |
 
+## Usage API
+
+`@ageback/middleware` also ships a `/usage/*` API for per-UTC-day rollups of revenue, requests, cashback, and wallets. Adds:
+
+```js
+import { attachAgeback, attachUsageApi } from "@ageback/middleware";
+
+const usage = await attachUsageApi(app, {
+  storePath: process.env.USAGE_DB_PATH,
+  keysPath:  process.env.USAGE_KEYS_PATH,
+  envKeys:   process.env.AGEBACK_USAGE_API_KEYS,
+});
+const ageback = attachAgeback(app, { usageStore: usage.store /* + other opts */ });
+```
+
+Mounts auth-gated `GET /usage/{summary,revenue,requests,wallets,cashback}` with UTC-day window control (`?start=YYYY-MM-DD&end=YYYY-MM-DD`). Full schema in [USAGE.md](https://github.com/Pigitaiko/Ageback/blob/main/USAGE.md).
+
 ## Versioning
 
 `@ageback/middleware@0.x` — additive changes only; the `ageback.v1` wire format is stable. Breaking shape changes will ship as `1.x` with the previous major maintained for a quarter.
