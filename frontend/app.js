@@ -1193,6 +1193,133 @@ function showTab(name) {
   if (name === "integrators") {
     loadIntegratorTab();
   }
+  if (name === "usage") {
+    initUsageTab();
+  }
+}
+
+// ===== Usage tab ===========================================================
+
+function usageBaseUrl() {
+  const el = document.getElementById("usage-server-url");
+  let url = (el && el.value || "").trim();
+  if (!url) url = "https://ageback.onrender.com";
+  return url.replace(/\/+$/, "");
+}
+
+function initUsageTab() {
+  try {
+    const saved = localStorage.getItem("ageback_usage_key");
+    if (saved) {
+      const el = document.getElementById("usage-api-key");
+      const remember = document.getElementById("usage-remember");
+      if (el && !el.value) el.value = saved;
+      if (remember) remember.checked = true;
+    }
+  } catch (_) { /* localStorage may be unavailable */ }
+}
+
+async function loadUsage() {
+  const key = (document.getElementById("usage-api-key").value || "").trim();
+  if (!key) { showStatus("Enter your operator API key (ageback_...)", "error"); return; }
+
+  try {
+    if (document.getElementById("usage-remember").checked) {
+      localStorage.setItem("ageback_usage_key", key);
+    } else {
+      localStorage.removeItem("ageback_usage_key");
+    }
+  } catch (_) { /* ignore */ }
+
+  const start = document.getElementById("usage-start").value;
+  const end = document.getElementById("usage-end").value;
+  const qs = new URLSearchParams();
+  if (start) qs.set("start", start);
+  if (end) qs.set("end", end);
+  const url = usageBaseUrl() + "/usage/summary" + (qs.toString() ? "?" + qs.toString() : "");
+
+  showStatus("Loading usage metrics…", "info");
+  try {
+    const resp = await fetch(url, { headers: { "X-API-Key": key } });
+    if (resp.status === 401) { showStatus("Unauthorized — check your API key", "error"); return; }
+    if (resp.status === 400) {
+      const body = await resp.json().catch(() => ({}));
+      showStatus("Bad request: " + (body.message || "invalid window"), "error");
+      return;
+    }
+    if (!resp.ok) { showStatus("Usage API error: HTTP " + resp.status, "error"); return; }
+    const data = await resp.json();
+    renderUsage(data);
+    showStatus("Usage metrics loaded", "success");
+  } catch (e) {
+    showStatus("Network error: " + e.message + " — the server may be waking up, retry in ~30s", "error");
+  }
+}
+
+function renderUsage(d) {
+  document.getElementById("usage-dashboard").classList.remove("hidden");
+
+  const usd = (n) => "$" + (Number(n) || 0).toFixed(2);
+  const num = (n) => (Number(n) || 0).toLocaleString();
+  const rev = d.revenue || {};
+  const req = d.requests || {};
+  const cbAlloc = (d.cashback && d.cashback.allocated) || {};
+  const cbRecip = (d.cashback && d.cashback.recipients) || {};
+  const w = d.wallets || {};
+
+  if (d.window) {
+    const gen = d.generatedAt ? new Date(d.generatedAt).toLocaleString() : "";
+    document.getElementById("usage-window").textContent =
+      `Window: ${d.window.startDay} → ${d.window.endDayExclusive} (end exclusive, UTC)` +
+      (gen ? ` · generated ${gen}` : "");
+  }
+
+  // KPIs
+  document.getElementById("kpi-revenue").textContent = usd(rev.totalUsd);
+  document.getElementById("kpi-revenue-sub").textContent =
+    `${num(rev.paymentCount)} payments · ${num(rev.uniquePayers)} payers`;
+  document.getElementById("kpi-requests").textContent = num(req.total);
+  document.getElementById("kpi-requests-sub").textContent =
+    `${num(req.paid)} paid · ${num(req.rejected_402)} 402 · ${num(req.free)} free`;
+  document.getElementById("kpi-cashback").textContent = String(cbAlloc.totalEth || 0);
+  document.getElementById("kpi-cashback-sub").textContent =
+    `${num(cbAlloc.count)} allocations · ${num(cbRecip.uniqueInWindow)} recipients`;
+  document.getElementById("kpi-wallets").textContent = num(w.payersInWindow);
+  document.getElementById("kpi-wallets-sub").textContent = `${num(w.cumulativePayers)} all-time`;
+
+  // Request breakdown bars
+  const total = Number(req.total) || 0;
+  const bar = (label, val, cls) => {
+    val = Number(val) || 0;
+    const pct = total ? Math.round((val / total) * 100) : 0;
+    return `<div class="ubar">
+      <div class="ubar-head"><span>${label}</span><span>${val.toLocaleString()} (${pct}%)</span></div>
+      <div class="ubar-track"><div class="ubar-fill ${cls}" style="width:${pct}%"></div></div>
+    </div>`;
+  };
+  document.getElementById("usage-requests-bars").innerHTML = total
+    ? bar("Paid", req.paid, "paid") + bar("402 rejected", req.rejected_402, "rej") + bar("Free", req.free, "free")
+    : '<p class="placeholder">No requests recorded in this window yet.</p>';
+
+  // Revenue by endpoint
+  const eps = rev.byEndpoint || {};
+  const epKeys = Object.keys(eps);
+  document.getElementById("usage-endpoints").innerHTML = epKeys.length
+    ? epKeys.map((k) =>
+        `<div class="info-row"><span class="label">${escapeHtml(k)}</span><span class="value">${usd(eps[k].totalUsd)} · ${num(eps[k].count)}</span></div>`
+      ).join("")
+    : '<p class="placeholder">No revenue recorded in this window yet.</p>';
+
+  // Wallets
+  const ftp = w.firstTimePayersInWindow || [];
+  document.getElementById("usage-wallets").innerHTML =
+    `<div class="info-row"><span class="label">Payers in window</span><span class="value">${num(w.payersInWindow)}</span></div>` +
+    `<div class="info-row"><span class="label">Cumulative payers (all-time)</span><span class="value">${num(w.cumulativePayers)}</span></div>` +
+    `<div class="info-row"><span class="label">First-time payers in window</span><span class="value">${num(ftp.length)}</span></div>` +
+    (ftp.length ? `<div class="usage-wallet-list">${ftp.map((a) => `<code>${escapeHtml(a)}</code>`).join("")}</div>` : "");
+
+  // Raw JSON
+  document.getElementById("usage-raw").textContent = JSON.stringify(d, null, 2);
 }
 
 // ===== Integrators tab =====================================================

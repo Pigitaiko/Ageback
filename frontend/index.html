@@ -3,13 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>X402 Cashback Protocol</title>
+  <title>Ageback — x402 Cashback Protocol</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
     <div class="header-content">
-      <h1>X402 Cashback Protocol</h1>
+      <h1><span class="wordmark">Ageback</span><span class="tagline">x402 cashback protocol</span></h1>
       <div id="wallet-section">
         <button id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
         <div id="wallet-info" class="hidden">
@@ -28,6 +31,7 @@
     <button class="nav-btn" onclick="showTab('tiers')">Loyalty Tiers</button>
     <button class="nav-btn" onclick="showTab('referrals')">Referrals</button>
     <button class="nav-btn" onclick="showTab('claims')">Claims</button>
+    <button class="nav-btn" onclick="showTab('usage')">Usage</button>
     <button class="nav-btn" onclick="showTab('admin')">Admin</button>
     <button class="nav-btn" onclick="showTab('integrators')">Integrators</button>
   </nav>
@@ -445,6 +449,92 @@
           <button type="submit" class="btn-primary">Check</button>
         </form>
         <div id="claim-status"></div>
+      </div>
+    </section>
+
+    <!-- USAGE TAB -->
+    <section id="tab-usage" class="tab-content">
+      <div class="card">
+        <h2>Usage &amp; Revenue</h2>
+        <p class="usage-lead">
+          Service-level metrics from the Ageback <code>/usage</code> API &mdash; revenue,
+          requests, on-chain cashback, and paying-wallet rollups, per UTC day.
+          Requires an operator API key (<code>ageback_…</code>). Your key is sent only to
+          the server below and never leaves this browser.
+        </p>
+        <div class="usage-controls">
+          <div class="form-group">
+            <label>Server</label>
+            <input type="text" id="usage-server-url" value="https://ageback.onrender.com">
+          </div>
+          <div class="form-group">
+            <label>Operator API key</label>
+            <input type="password" id="usage-api-key" placeholder="ageback_..." autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Start (UTC, optional)</label>
+            <input type="date" id="usage-start">
+          </div>
+          <div class="form-group">
+            <label>End (UTC, exclusive, optional)</label>
+            <input type="date" id="usage-end">
+          </div>
+        </div>
+        <div class="usage-actions">
+          <button class="btn-primary" onclick="loadUsage()">Load metrics</button>
+          <label class="usage-remember">
+            <input type="checkbox" id="usage-remember"> Remember key on this device
+          </label>
+        </div>
+        <div id="usage-window" class="usage-window"></div>
+      </div>
+
+      <div id="usage-dashboard" class="usage-dashboard hidden">
+        <div class="kpi-grid">
+          <div class="kpi">
+            <span class="kpi-label">Revenue (USD)</span>
+            <span class="kpi-value" id="kpi-revenue">$0.00</span>
+            <span class="kpi-sub" id="kpi-revenue-sub">0 payments</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Requests</span>
+            <span class="kpi-value" id="kpi-requests">0</span>
+            <span class="kpi-sub" id="kpi-requests-sub">0 paid · 0 free</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Cashback (ETH)</span>
+            <span class="kpi-value" id="kpi-cashback">0</span>
+            <span class="kpi-sub" id="kpi-cashback-sub">0 allocations</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">Paying wallets</span>
+            <span class="kpi-value" id="kpi-wallets">0</span>
+            <span class="kpi-sub" id="kpi-wallets-sub">0 all-time</span>
+          </div>
+        </div>
+
+        <div class="usage-cols">
+          <div class="card">
+            <h2>Request breakdown</h2>
+            <div id="usage-requests-bars"></div>
+          </div>
+          <div class="card">
+            <h2>Revenue by endpoint</h2>
+            <div id="usage-endpoints"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Wallets</h2>
+          <div id="usage-wallets" class="info-grid"></div>
+        </div>
+
+        <div class="card">
+          <details class="int-raw">
+            <summary>Raw JSON response</summary>
+            <pre class="codeblock" id="usage-raw"></pre>
+          </details>
+        </div>
       </div>
     </section>
 

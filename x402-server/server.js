@@ -62,7 +62,7 @@ app.use(express.json());
 // CORS for frontend
 app.use((req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
-  res.set("Access-Control-Allow-Headers", "Content-Type, X-Payment, Payment-Signature");
+  res.set("Access-Control-Allow-Headers", "Content-Type, X-Payment, Payment-Signature, X-API-Key, Authorization");
   res.set("Access-Control-Expose-Headers", "X-Cashback-Enabled, X-Cashback-Network, X-Cashback-Contract, X-Cashback-Agent");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
