@@ -82,6 +82,15 @@ const MODEL_PRICING = {
   "claude-opus-4-6": "$0.12",
 };
 const DEFAULT_PRICE = "$0.01";
+const MAX_OUTPUT_TOKENS = 4096;        // hard cap on max_tokens forwarded upstream
+const UPSTREAM_TIMEOUT_MS = 120_000;   // abort a hung upstream Claude call
+const USDC_DECIMALS = NET.usdc.decimals;
+
+// Fail loudly at boot if payments or the upstream proxy can't work.
+if (!process.env.ANTHROPIC_API_KEY)
+  console.warn("[config] WARNING: ANTHROPIC_API_KEY is not set — paid /v1/messages calls will fail upstream.");
+if (!PAY_TO)
+  console.warn("[config] WARNING: PAY_TO_ADDRESS is not set — payment requirements cannot be built.");
 
 // --- Initialize cashback module ---
 initCashback({
@@ -198,6 +207,29 @@ function extractPayerAddress(paymentHeader) {
   }
 }
 
+// Decode the settled USDC amount (in USD) from the X-PAYMENT header. The
+// facilitator has already verified this authorization, so the value here is
+// the amount actually paid. Returns null if it can't be parsed.
+function extractPaidUsd(paymentHeader) {
+  if (!paymentHeader) return null;
+  let decoded;
+  try {
+    decoded = JSON.parse(Buffer.from(paymentHeader, "base64").toString());
+  } catch {
+    try { decoded = JSON.parse(paymentHeader); } catch { return null; }
+  }
+  const raw =
+    decoded?.payload?.authorization?.value ?? decoded?.value ?? decoded?.amount;
+  if (raw == null) return null;
+  const atomic = Number(raw);
+  if (!Number.isFinite(atomic)) return null;
+  return atomic / Math.pow(10, USDC_DECIMALS);
+}
+
+function priceToUsd(price) {
+  return parseFloat(String(price).replace(/[^0-9.]/g, "")) || 0;
+}
+
 // --- Routes ---
 
 // Landing page
@@ -242,27 +274,81 @@ app.get("/health", async (req, res) => {
 // By the time this handler runs, payment has been verified.
 app.post("/v1/messages", async (req, res) => {
   const model = req.body?.model || "claude-sonnet-4-5-20250929";
-  const price = MODEL_PRICING[model] || DEFAULT_PRICE;
 
-  // Extract payer address for cashback
+  // Enforce a model allowlist — never forward arbitrary/unpriced models.
+  if (!MODEL_PRICING[model]) {
+    return res.status(400).json({
+      error: "unsupported_model",
+      message: `Model '${model}' is not offered. Supported: ${Object.keys(MODEL_PRICING).join(", ")}`,
+    });
+  }
+  const price = MODEL_PRICING[model];
+  const requiredUsd = priceToUsd(price);
+
+  // Extract payer + the amount actually paid (facilitator-verified).
   const paymentHeader =
     req.headers["x-payment"] || req.headers["payment-signature"];
   const agentAddress = extractPayerAddress(paymentHeader);
+  const paidUsd = extractPaidUsd(paymentHeader);
 
-  // Trigger cashback asynchronously (don't block the Claude response)
-  if (agentAddress) {
-    const priceNum = price.replace("$", "");
-    const agentId = req.headers["x-agent-id"] || null; // ERC-8004 token ID for tier tracking
-    allocateCashback(agentAddress, priceNum, agentId).then((result) => {
-      if (result.success) {
-        console.log(
-          `[cashback] ${result.rebateAmount} ETH -> ${agentAddress} (tx: ${result.txHash})`
-        );
-      }
+  // Enforce that the paid tier covers the requested model — stops "pay the
+  // cheap tier, request the expensive model". Fail open only when the amount
+  // can't be parsed (the middleware already verified *some* valid payment).
+  if (paidUsd != null && paidUsd + 1e-9 < requiredUsd) {
+    return res.status(402).json({
+      error: "insufficient_payment",
+      message: `Model '${model}' requires $${requiredUsd.toFixed(3)} but $${paidUsd.toFixed(3)} was paid.`,
     });
   }
 
-  // Proxy to upstream Claude API
+  // Clamp output tokens so a single paid call can't run up an unbounded bill.
+  if (req.body && typeof req.body === "object") {
+    const requested = Number(req.body.max_tokens);
+    req.body.max_tokens = Math.min(
+      Number.isFinite(requested) && requested > 0 ? requested : MAX_OUTPUT_TOKENS,
+      MAX_OUTPUT_TOKENS
+    );
+  }
+
+  const priceNum = price.replace("$", "");
+
+  // Record revenue for the /usage API (payment is verified by the middleware).
+  if (agentAddress) {
+    try {
+      usage.store.recordPayment({
+        payer: agentAddress,
+        usd: paidUsd != null ? paidUsd : Number(priceNum),
+        protocol: "x402",
+        endpoint: "POST /v1/messages",
+      });
+    } catch (e) {
+      console.error("[usage] recordPayment failed:", e.message);
+    }
+  }
+
+  // Trigger cashback asynchronously (don't block the Claude response).
+  if (agentAddress) {
+    const agentId = req.headers["x-agent-id"] || null; // ERC-8004 token ID for tier tracking
+    allocateCashback(agentAddress, priceNum, agentId)
+      .then((result) => {
+        if (result.success) {
+          console.log(
+            `[cashback] ${result.rebateAmount} ETH -> ${agentAddress} (tx: ${result.txHash})`
+          );
+          try {
+            usage.store.recordCashback({
+              agent: agentAddress,
+              eth: Number(result.rebateAmount) || 0,
+            });
+          } catch (e) {
+            console.error("[usage] recordCashback failed:", e.message);
+          }
+        }
+      })
+      .catch((e) => console.error("[cashback] failed:", e.message));
+  }
+
+  // Proxy to upstream Claude API with a timeout so a hung call can't pin a slot.
   try {
     const upstreamResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -272,6 +358,7 @@ app.post("/v1/messages", async (req, res) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
     const data = await upstreamResp.json();
@@ -286,7 +373,11 @@ app.post("/v1/messages", async (req, res) => {
 
     res.status(upstreamResp.status).json(data);
   } catch (err) {
-    res.status(502).json({ error: "Upstream API error", message: err.message });
+    const timedOut = err.name === "TimeoutError" || err.name === "AbortError";
+    res.status(timedOut ? 504 : 502).json({
+      error: timedOut ? "upstream_timeout" : "upstream_error",
+      message: err.message,
+    });
   }
 });
 

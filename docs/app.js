@@ -478,10 +478,22 @@ function sortMarketplace() {
 }
 
 function escapeHtml(str) {
-  if (!str) return "";
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Attribute-safe href: only allow http(s) (blocks javascript:/data:), and
+// escape quotes so a value can't break out of the attribute. Returns "#"
+// for anything that isn't a plain web URL.
+function safeHref(url) {
+  const s = String(url == null ? "" : url).trim();
+  if (!/^https?:\/\//i.test(s)) return "#";
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // --- Provider Functions ---
@@ -895,7 +907,7 @@ function renderProviderCard(p) {
     : `<span style="font-size:0.7rem;color:var(--text-muted);">No 8004 ID</span>`;
 
   const apiDisplay = p.apiEndpoint
-    ? `<div class="provider-card-api"><a href="${escapeHtml(p.apiEndpoint)}" target="_blank" rel="noopener">${escapeHtml(p.apiEndpoint)}</a></div>`
+    ? `<div class="provider-card-api"><a href="${safeHref(p.apiEndpoint)}" target="_blank" rel="noopener">${escapeHtml(p.apiEndpoint)}</a></div>`
     : "";
 
   const pricingDisplay = isLiveServer && serverInfo.pricing
@@ -1076,17 +1088,17 @@ async function demoStep1() {
       const req = Array.isArray(decoded) ? decoded[0] : decoded;
       html += `<div style="margin-top:0.6rem;font-size:0.85rem;color:var(--text-muted)"><strong style="color:var(--text)">Payment Requirements:</strong></div>`;
       html += `<div class="info-grid" style="margin-top:0.3rem">`;
-      if (req.maxAmountRequired) html += `<div class="info-row"><span class="label">Price</span><span class="value">${req.maxAmountRequired} (smallest unit)</span></div>`;
+      if (req.maxAmountRequired) html += `<div class="info-row"><span class="label">Price</span><span class="value">${escapeHtml(req.maxAmountRequired)} (smallest unit)</span></div>`;
       if (req.asset) html += `<div class="info-row"><span class="label">Asset</span><span class="value">${shortenAddr(req.asset)}</span></div>`;
-      if (req.network) html += `<div class="info-row"><span class="label">Network</span><span class="value">${req.network}</span></div>`;
+      if (req.network) html += `<div class="info-row"><span class="label">Network</span><span class="value">${escapeHtml(req.network)}</span></div>`;
       if (req.payTo) html += `<div class="info-row"><span class="label">Pay To</span><span class="value">${shortenAddr(req.payTo)}</span></div>`;
       html += `</div>`;
-      html += `<details style="margin-top:0.6rem"><summary style="cursor:pointer;font-size:0.8rem;color:var(--text-muted)">Raw payment requirements</summary><pre>${JSON.stringify(decoded, null, 2)}</pre></details>`;
+      html += `<details style="margin-top:0.6rem"><summary style="cursor:pointer;font-size:0.8rem;color:var(--text-muted)">Raw payment requirements</summary><pre>${escapeHtml(JSON.stringify(decoded, null, 2))}</pre></details>`;
     } else {
       html += `<p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem">Could not parse payment requirements. The server may be offline or not returning x402 headers. Status: ${status}</p>`;
       try {
         const text = await resp.text();
-        if (text) html += `<pre>${text.substring(0, 500)}</pre>`;
+        if (text) html += `<pre>${escapeHtml(text.substring(0, 500))}</pre>`;
       } catch {}
     }
 
@@ -1378,16 +1390,16 @@ async function loadIntManifest(base) {
       ["Category", intEscape(data.category || "—")],
       ["Chain", intEscape((chain.name || "?") + " (chainId " + (chain.chainId || "?") + ", " + (chain.caip2 || "?") + ")")],
       ["Provider address", provider
-        ? `<a href="${explorer}/address/${provider}" target="_blank"><code>${intEscape(provider)}</code></a>`
+        ? `<a href="${safeHref(explorer + "/address/" + provider)}" target="_blank"><code>${intEscape(provider)}</code></a>`
         : "<em>read-only</em>"],
       ["RebatePoolManager", c.rebatePoolManager
-        ? `<a href="${explorer}/address/${c.rebatePoolManager}" target="_blank"><code>${intEscape(c.rebatePoolManager)}</code></a>`
+        ? `<a href="${safeHref(explorer + "/address/" + c.rebatePoolManager)}" target="_blank"><code>${intEscape(c.rebatePoolManager)}</code></a>`
         : "—"],
       ["LoyaltyTierManager", c.loyaltyTierManager
-        ? `<a href="${explorer}/address/${c.loyaltyTierManager}" target="_blank"><code>${intEscape(c.loyaltyTierManager)}</code></a>`
+        ? `<a href="${safeHref(explorer + "/address/" + c.loyaltyTierManager)}" target="_blank"><code>${intEscape(c.loyaltyTierManager)}</code></a>`
         : "—"],
       ["ReferralGraph", c.referralGraph
-        ? `<a href="${explorer}/address/${c.referralGraph}" target="_blank"><code>${intEscape(c.referralGraph)}</code></a>`
+        ? `<a href="${safeHref(explorer + "/address/" + c.referralGraph)}" target="_blank"><code>${intEscape(c.referralGraph)}</code></a>`
         : "—"],
       ["Facilitator", intEscape((data.x402 && data.x402.facilitator) || "—")],
     ];
@@ -1421,7 +1433,7 @@ async function loadIntProviders(base) {
           <div class="int-pname">${intEscape(p.name || "—")}</div>
           <div class="int-pdesc">${intEscape(p.description || "")}</div>
         </td>
-        <td><a href="${explorer}/address/${p.address}" target="_blank"><code>${intEscape(intShort(p.address))}</code></a></td>
+        <td><a href="${safeHref(explorer + "/address/" + p.address)}" target="_blank"><code>${intEscape(intShort(p.address))}</code></a></td>
         <td>${intEscape(p.category || "—")}</td>
         <td><strong>${intEscape(p.rebatePercent || ((p.rebateBps / 100).toFixed(2) + "%"))}</strong></td>
         <td>${intEscape((+p.deposited).toFixed(4))} ETH</td>
@@ -1459,10 +1471,10 @@ async function loadIntCashback(base) {
     const rows = items.map(it => `
       <tr>
         <td><code>${intEscape(String(it.blockNumber))}</code></td>
-        <td><a href="${explorer}/address/${it.provider}" target="_blank"><code>${intEscape(intShort(it.provider))}</code></a></td>
-        <td><a href="${explorer}/address/${it.agent}" target="_blank"><code>${intEscape(intShort(it.agent))}</code></a></td>
+        <td><a href="${safeHref(explorer + "/address/" + it.provider)}" target="_blank"><code>${intEscape(intShort(it.provider))}</code></a></td>
+        <td><a href="${safeHref(explorer + "/address/" + it.agent)}" target="_blank"><code>${intEscape(intShort(it.agent))}</code></a></td>
         <td><strong>${intEscape((+it.amount).toFixed(6))}</strong></td>
-        <td><a href="${it.explorerUrl || (explorer + '/tx/' + it.txHash)}" target="_blank"><code>${intEscape(intShort(it.txHash))}</code></a></td>
+        <td><a href="${safeHref(it.explorerUrl || (explorer + "/tx/" + it.txHash))}" target="_blank"><code>${intEscape(intShort(it.txHash))}</code></a></td>
       </tr>
     `).join("");
     el.innerHTML = `
