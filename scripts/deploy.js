@@ -71,13 +71,13 @@ async function main() {
     },
   };
 
-  const deploymentPath = path.join(__dirname, "..", "frontend", "deployment.json");
+  const deploymentPath = path.join(__dirname, "..", "docs", "deployment.json");
   fs.writeFileSync(deploymentPath, JSON.stringify(deployment, null, 2));
-  console.log("\nDeployment saved to frontend/deployment.json");
+  console.log("\nDeployment saved to docs/deployment.json");
 
-  // 8. Copy ABIs for frontend
+  // 8. Copy ABIs for the frontend (served from docs/)
   const artifactsDir = path.join(__dirname, "..", "artifacts", "contracts");
-  const abiDir = path.join(__dirname, "..", "frontend", "abis");
+  const abiDir = path.join(__dirname, "..", "docs", "abis");
   fs.mkdirSync(abiDir, { recursive: true });
 
   const contractNames = [
@@ -98,7 +98,7 @@ async function main() {
       );
     }
   }
-  console.log("ABIs copied to frontend/abis/");
+  console.log("ABIs copied to docs/abis/");
 
   console.log("\n=== Deployment Complete ===");
   console.log(JSON.stringify(deployment.contracts, null, 2));

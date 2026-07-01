@@ -10,9 +10,9 @@ async function main() {
   // Read contract address from deployment.json or REBATE_POOL_MANAGER env var
   let poolManagerAddr = process.env.REBATE_POOL_MANAGER;
   if (!poolManagerAddr) {
-    const deploymentPath = path.join(__dirname, "..", "frontend", "deployment.json");
+    const deploymentPath = path.join(__dirname, "..", "docs", "deployment.json");
     if (!fs.existsSync(deploymentPath)) {
-      throw new Error("No REBATE_POOL_MANAGER env var and no frontend/deployment.json found. Run deploy.js first.");
+      throw new Error("No REBATE_POOL_MANAGER env var and no docs/deployment.json found. Run deploy.js first.");
     }
     const deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
     poolManagerAddr = deployment.contracts.RebatePoolManager;

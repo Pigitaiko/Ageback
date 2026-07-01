@@ -282,11 +282,12 @@ Ageback/
 │   ├── server.js        # Main server — x402 gating + Claude proxy + cashback
 │   ├── cashback.js      # On-chain cashback allocation logic
 │   └── test-agent.js    # Demo agent script
-├── frontend/            # Static frontend (HTML/JS/CSS)
+├── docs/                # Static frontend — the single source, served by GitHub Pages
 │   ├── index.html
 │   ├── app.js
-│   └── style.css
-├── docs/                # GitHub Pages deployment (mirror of frontend/)
+│   ├── style.css
+│   ├── abis/            # Contract ABIs (written by deploy.js)
+│   └── deployment.json  # Deployed contract addresses (written by deploy.js)
 └── scripts/             # Hardhat deployment and admin scripts
 ```
 
